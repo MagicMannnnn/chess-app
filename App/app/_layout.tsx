@@ -4,13 +4,15 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { useColorScheme } from '@/components/useColorScheme'
+import { SettingsProvider } from '@/contexts/SettingsContext'
 
 export { ErrorBoundary } from 'expo-router'
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)',
+  initialRouteName: '(tabs)/home',
 }
 
 SplashScreen.preventAutoHideAsync()
@@ -27,11 +29,15 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme()
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" options={{ presentation: 'modal', title: 'Settings' }} />
-      </Stack>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <SettingsProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="settings" options={{ presentation: 'modal', title: 'Settings' }} />
+          </Stack>
+        </ThemeProvider>
+      </SettingsProvider>
+    </SafeAreaProvider>
   )
 }

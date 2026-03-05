@@ -6,6 +6,7 @@ import { theme } from '@/constants/theme'
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="home"
       screenOptions={{
         tabBarActiveTintColor: theme.colors.primary,
         headerShown: false,

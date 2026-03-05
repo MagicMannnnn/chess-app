@@ -25,23 +25,26 @@ set(CORE_HEADERS
     Core/Types.h
 )
 
-# Create static library
-add_library(chess_engine STATIC ${CORE_SOURCES} ${CORE_HEADERS})
-
-target_include_directories(chess_engine PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-# For WebAssembly build (future)
+# For WebAssembly build
 if(EMSCRIPTEN)
-    set(CMAKE_EXECUTABLE_SUFFIX ".wasm")
-    target_link_options(chess_engine PUBLIC
-        "SHELL:-s WASM=1"
-        "SHELL:-s EXPORTED_FUNCTIONS=['_malloc','_free']"
-        "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap']"
-        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
-        "SHELL:-s MODULARIZE=1"
-        "SHELL:-s EXPORT_NAME='ChessEngine'"
+    add_executable(chess_engine
+        ${CORE_SOURCES}
+        bindings/emscripten_bindings.cpp
+    )
+    
+    target_include_directories(chess_engine PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    
+    set_target_properties(chess_engine PROPERTIES
+        LINK_FLAGS "--bind -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s EXPORT_NAME='createChessEngine' -s ENVIRONMENT='web' -O3"
+    )
+else()
+    # Native build - create static library
+    add_library(chess_engine STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+
+    target_include_directories(chess_engine PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
     )
 endif()
 
