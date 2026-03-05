@@ -15,12 +15,12 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
     [PieceType.PAWN]: '♙',
   },
   [Color.BLACK]: {
-    [PieceType.KING]: '♚',
-    [PieceType.QUEEN]: '♛',
-    [PieceType.ROOK]: '♜',
-    [PieceType.BISHOP]: '♝',
-    [PieceType.KNIGHT]: '♞',
-    [PieceType.PAWN]: '♟',
+    [PieceType.KING]: '♔',
+    [PieceType.QUEEN]: '♕',
+    [PieceType.ROOK]: '♖',
+    [PieceType.BISHOP]: '♗',
+    [PieceType.KNIGHT]: '♘',
+    [PieceType.PAWN]: '♙',
   },
 }
 
@@ -72,9 +72,10 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   }
 
   const handleSquarePress = (square: number) => {
+    const piece = board[square]
+
     if (selectedSquare === null) {
       // Select piece
-      const piece = board[square]
       if (piece && piece.color === currentPlayer) {
         setSelectedSquare(square)
         const row = Math.floor(square / 8)
@@ -84,6 +85,18 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
         setLegalMoves(moves)
       }
     } else {
+      // Check if clicking on another piece of the same color
+      if (piece && piece.color === currentPlayer && square !== selectedSquare) {
+        // Change selection to new piece
+        setSelectedSquare(square)
+        const row = Math.floor(square / 8)
+        const col = square % 8
+        const squareNotation = String.fromCharCode('a'.charCodeAt(0) + col) + (row + 1)
+        const moves = engine.getLegalMovesFrom(squareNotation)
+        setLegalMoves(moves)
+        return
+      }
+
       // Try to make move
       const fromRow = Math.floor(selectedSquare / 8)
       const fromCol = selectedSquare % 8
@@ -95,9 +108,9 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
       const move = from + to
 
       // Check if pawn promotion
-      const piece = board[selectedSquare]
-      if (piece && piece.type === PieceType.PAWN) {
-        const promotionRow = piece.color === Color.WHITE ? 7 : 0
+      const selectedPiece = board[selectedSquare]
+      if (selectedPiece && selectedPiece.type === PieceType.PAWN) {
+        const promotionRow = selectedPiece.color === Color.WHITE ? 7 : 0
         if (toRow === promotionRow) {
           // Auto-promote to queen for now
           const moveWithPromotion = move + 'q'
@@ -181,7 +194,18 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
           />
         )}
         {piece && (
-          <Text style={[styles.piece, { fontSize: squareSize * 0.7 }]}>
+          <Text
+            style={[
+              styles.piece,
+              {
+                fontSize: squareSize * 0.7,
+                color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000',
+                textShadowColor: piece.color === Color.WHITE ? '#000000' : '#FFFFFF',
+                textShadowOffset: { width: 0, height: 0 },
+                textShadowRadius: 3,
+              },
+            ]}
+          >
             {UNICODE_PIECES[piece.color][piece.type]}
           </Text>
         )}

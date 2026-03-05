@@ -12,7 +12,7 @@ import { SettingsProvider } from '@/contexts/SettingsContext'
 export { ErrorBoundary } from 'expo-router'
 
 export const unstable_settings = {
-  initialRouteName: '(tabs)/home',
+  initialRouteName: '(tabs)',
 }
 
 SplashScreen.preventAutoHideAsync()
