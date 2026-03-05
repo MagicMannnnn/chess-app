@@ -1,5 +1,13 @@
-import React, { useEffect, useState } from 'react'
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  Dimensions,
+  type GestureResponderEvent,
+  PanResponder,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { theme } from '@/constants/theme'
@@ -37,6 +45,11 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   const [currentPlayer, setCurrentPlayer] = useState<Color>(engine.getCurrentPlayer())
   const [isFlipped, setIsFlipped] = useState(flipped)
   const [gameStatus, setGameStatus] = useState<string>('')
+  const [draggingSquare, setDraggingSquare] = useState<number | null>(null)
+  const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
+  const boardRef = useRef<View>(null)
+  const boardWrapperRef = useRef<View>(null)
+  const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
   // Use 90% of screen width or 90% of available height (minus space for status/controls), whichever is smaller
   const maxBoardSize = Math.min(screenWidth * 0.9, (screenHeight - 250) * 0.9)
@@ -150,6 +163,66 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
     setIsFlipped(!isFlipped)
   }
 
+  const createPiecePanResponder = (square: number, piece: Piece) => {
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => piece.color === currentPlayer,
+      onMoveShouldSetPanResponder: () => piece.color === currentPlayer,
+      onPanResponderGrant: (evt: GestureResponderEvent) => {
+        const { pageX, pageY } = evt.nativeEvent
+        // Remeasure board position to ensure accuracy
+        boardRef.current?.measureInWindow((x, y, width, height) => {
+          boardLayoutRef.current = { x, y, width, height }
+          setDraggingSquare(square)
+          setDragPosition({ x: pageX - x, y: pageY - y })
+        })
+        setSelectedSquare(square)
+        const row = Math.floor(square / 8)
+        const col = square % 8
+        const squareNotation = String.fromCharCode('a'.charCodeAt(0) + col) + (row + 1)
+        const moves = engine.getLegalMovesFrom(squareNotation)
+        setLegalMoves(moves)
+      },
+      onPanResponderMove: (evt: GestureResponderEvent) => {
+        const { pageX, pageY } = evt.nativeEvent
+        const layout = boardLayoutRef.current
+        setDragPosition({ x: pageX - layout.x, y: pageY - layout.y })
+      },
+      onPanResponderRelease: (evt: GestureResponderEvent) => {
+        const { pageX, pageY } = evt.nativeEvent
+        const layout = boardLayoutRef.current
+
+        // Calculate which square the piece was dropped on
+        const relativeX = pageX - layout.x
+        const relativeY = pageY - layout.y
+
+        if (
+          relativeX >= 0 &&
+          relativeX < layout.width &&
+          relativeY >= 0 &&
+          relativeY < layout.height
+        ) {
+          const col = Math.floor(relativeX / squareSize)
+          const row = 7 - Math.floor(relativeY / squareSize)
+
+          const targetSquare = isFlipped ? (7 - row) * 8 + (7 - col) : row * 8 + col
+
+          // Try to make the move
+          if (targetSquare !== square) {
+            handleSquarePress(targetSquare)
+          }
+        }
+        // Clear drag state
+        setDraggingSquare(null)
+        setDragPosition(null)
+      },
+      onPanResponderTerminate: () => {
+        // Clear drag state on terminate
+        setDraggingSquare(null)
+        setDragPosition(null)
+      },
+    })
+  }
+
   const isSquareLegalMove = (square: number): boolean => {
     if (selectedSquare === null) return false
     const toRow = Math.floor(square / 8)
@@ -171,6 +244,10 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
     const isLegal = isSquareLegalMove(square)
 
     const piece = board[square]
+    const isDragging = draggingSquare === square
+
+    const panResponder =
+      piece && piece.color === currentPlayer ? createPiecePanResponder(square, piece) : null
 
     return (
       <TouchableOpacity
@@ -194,20 +271,22 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
           />
         )}
         {piece && (
-          <Text
-            style={[
-              styles.piece,
-              {
-                fontSize: squareSize * 0.7,
-                color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000',
-                textShadowColor: piece.color === Color.WHITE ? '#000000' : '#FFFFFF',
-                textShadowOffset: { width: 0, height: 0 },
-                textShadowRadius: 3,
-              },
-            ]}
-          >
-            {UNICODE_PIECES[piece.color][piece.type]}
-          </Text>
+          <View {...(panResponder?.panHandlers || {})} style={{ opacity: isDragging ? 0 : 1 }}>
+            <Text
+              style={[
+                styles.piece,
+                {
+                  fontSize: squareSize * 0.7,
+                  color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000',
+                  textShadowColor: piece.color === Color.WHITE ? '#000000' : '#FFFFFF',
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 3,
+                },
+              ]}
+            >
+              {UNICODE_PIECES[piece.color][piece.type]}
+            </Text>
+          </View>
         )}
       </TouchableOpacity>
     )
@@ -231,9 +310,51 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
       </View>
 
       <View style={styles.boardContainer}>
-        <View style={styles.boardWrapper}>
-          <View style={[styles.board, { width: boardSize, height: boardSize }]}>
+        <View style={styles.boardWrapper} ref={boardWrapperRef}>
+          <View
+            style={[styles.board, { width: boardSize, height: boardSize }]}
+            ref={boardRef}
+            onLayout={(_event) => {
+              boardRef.current?.measureInWindow((x, y, width, height) => {
+                boardLayoutRef.current = { x, y, width, height }
+              })
+            }}
+          >
             {renderBoard()}
+
+            {/* Dragged piece overlay */}
+            {draggingSquare !== null && dragPosition && (
+              <View
+                style={{
+                  position: 'absolute',
+                  left: dragPosition.x - squareSize / 2,
+                  top: dragPosition.y - squareSize / 2,
+                  width: squareSize,
+                  height: squareSize,
+                  zIndex: 1000,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  pointerEvents: 'none',
+                }}
+              >
+                <Text
+                  style={[
+                    styles.piece,
+                    {
+                      fontSize: squareSize * 0.7,
+                      color: board[draggingSquare]?.color === Color.WHITE ? '#FFFFFF' : '#000000',
+                      textShadowColor:
+                        board[draggingSquare]?.color === Color.WHITE ? '#000000' : '#FFFFFF',
+                      textShadowOffset: { width: 0, height: 0 },
+                      textShadowRadius: 3,
+                    },
+                  ]}
+                >
+                  {board[draggingSquare] &&
+                    UNICODE_PIECES[board[draggingSquare]!.color][board[draggingSquare]!.type]}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -293,6 +414,7 @@ const styles = StyleSheet.create({
   board: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    position: 'relative',
   },
   square: {
     justifyContent: 'center',
