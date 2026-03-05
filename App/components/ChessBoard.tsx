@@ -47,6 +47,7 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   const [gameStatus, setGameStatus] = useState<string>('')
   const [draggingSquare, setDraggingSquare] = useState<number | null>(null)
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
+  const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
   const boardRef = useRef<View>(null)
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
@@ -185,7 +186,24 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
       onPanResponderMove: (evt: GestureResponderEvent) => {
         const { pageX, pageY } = evt.nativeEvent
         const layout = boardLayoutRef.current
-        setDragPosition({ x: pageX - layout.x, y: pageY - layout.y })
+        const relativeX = pageX - layout.x
+        const relativeY = pageY - layout.y
+        setDragPosition({ x: relativeX, y: relativeY })
+
+        // Calculate hovered square
+        if (
+          relativeX >= 0 &&
+          relativeX < layout.width &&
+          relativeY >= 0 &&
+          relativeY < layout.height
+        ) {
+          const col = Math.floor(relativeX / squareSize)
+          const row = 7 - Math.floor(relativeY / squareSize)
+          const hovered = isFlipped ? (7 - row) * 8 + (7 - col) : row * 8 + col
+          setHoveredSquare(hovered)
+        } else {
+          setHoveredSquare(null)
+        }
       },
       onPanResponderRelease: (evt: GestureResponderEvent) => {
         const { pageX, pageY } = evt.nativeEvent
@@ -214,11 +232,13 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
         // Clear drag state
         setDraggingSquare(null)
         setDragPosition(null)
+        setHoveredSquare(null)
       },
       onPanResponderTerminate: () => {
         // Clear drag state on terminate
         setDraggingSquare(null)
         setDragPosition(null)
+        setHoveredSquare(null)
       },
     })
   }
@@ -242,12 +262,18 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
     const isLight = (row + col) % 2 === 0
     const isSelected = selectedSquare === square
     const isLegal = isSquareLegalMove(square)
+    const isHovered = hoveredSquare === square
 
     const piece = board[square]
     const isDragging = draggingSquare === square
 
     const panResponder =
       piece && piece.color === currentPlayer ? createPiecePanResponder(square, piece) : null
+
+    // Calculate background color with slight lightening for selected/hovered
+    const baseColor = isLight ? '#f0d9b5' : '#b58863'
+    const lightColor = isLight ? '#faf0e0' : '#cca47a'
+    const backgroundColor = isSelected || isHovered ? lightColor : baseColor
 
     return (
       <TouchableOpacity
@@ -257,21 +283,17 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
           {
             width: squareSize,
             height: squareSize,
-            backgroundColor: isSelected ? '#7fa650' : isLight ? '#f0d9b5' : '#b58863',
+            backgroundColor,
           },
         ]}
         onPress={() => handleSquarePress(square)}
       >
-        {isLegal && (
-          <View
-            style={[
-              styles.legalMoveIndicator,
-              { backgroundColor: piece ? '#ff000080' : '#00000040' },
-            ]}
-          />
-        )}
+        {isLegal && <View style={[styles.legalMoveIndicator, { backgroundColor: '#00000040' }]} />}
         {piece && (
-          <View {...(panResponder?.panHandlers || {})} style={{ opacity: isDragging ? 0 : 1 }}>
+          <View
+            {...(panResponder?.panHandlers || {})}
+            style={{ opacity: isDragging ? 0 : 1, pointerEvents: 'box-only' }}
+          >
             <Text
               style={[
                 styles.piece,
