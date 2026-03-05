@@ -1,0 +1,53 @@
+cmake_minimum_required(VERSION 3.15)
+project(ChessEngine VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Compiler flags for optimization
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
+endif()
+
+# Source files
+set(CORE_SOURCES
+    Core/Board.cpp
+    Core/Move.cpp
+    Core/ChessEngine.cpp
+)
+
+set(CORE_HEADERS
+    Core/Board.h
+    Core/Move.h
+    Core/ChessEngine.h
+    Core/Types.h
+)
+
+# Create static library
+add_library(chess_engine STATIC ${CORE_SOURCES} ${CORE_HEADERS})
+
+target_include_directories(chess_engine PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
+# For WebAssembly build (future)
+if(EMSCRIPTEN)
+    set(CMAKE_EXECUTABLE_SUFFIX ".wasm")
+    target_link_options(chess_engine PUBLIC
+        "SHELL:-s WASM=1"
+        "SHELL:-s EXPORTED_FUNCTIONS=['_malloc','_free']"
+        "SHELL:-s EXPORTED_RUNTIME_METHODS=['ccall','cwrap']"
+        "SHELL:-s ALLOW_MEMORY_GROWTH=1"
+        "SHELL:-s MODULARIZE=1"
+        "SHELL:-s EXPORT_NAME='ChessEngine'"
+    )
+endif()
+
+# Optional: Build test executable (for development/testing)
+option(BUILD_TESTS "Build test executable" OFF)
+if(BUILD_TESTS)
+    add_executable(chess_test test/main.cpp)
+    target_link_libraries(chess_test PRIVATE chess_engine)
+endif()
