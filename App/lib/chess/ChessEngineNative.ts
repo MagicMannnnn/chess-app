@@ -203,10 +203,10 @@ export class ChessEngine {
     }
   }
 
-  getBestMove(depth: number): string {
+  async getBestMove(depth: number): Promise<string> {
     try {
       if (!this.ensureInitialized()) return ''
-      return this.nativeEngine!.getBestMove(depth)
+      return await this.nativeEngine!.getBestMove(depth)
     } catch (error) {
       console.error('ChessEngine: getBestMove failed:', error)
       return ''

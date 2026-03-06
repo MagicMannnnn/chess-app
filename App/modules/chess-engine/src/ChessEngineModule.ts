@@ -20,7 +20,7 @@ export interface ChessEngineModuleInterface {
   getBoard(): PieceInfo[]
   getFEN(): string
   loadFromFEN(fen: string): boolean
-  getBestMove(depth: number): string
+  getBestMove(depth: number): Promise<string>
   getMoveHistory(): string[]
   canUndo(): boolean
 }

@@ -149,29 +149,25 @@ export default function ChessBoard({
     let currentDepth = 1
 
     // Recursive function to compute one depth at a time
-    const computeNextDepth = () => {
+    const computeNextDepth = async () => {
       if (cancelled || currentDepth > searchDepth) return
 
-      // Use setImmediate to truly yield to event loop
-      setImmediate(() => {
-        if (cancelled) return
-
-        try {
-          const move = engine.getBestMove(currentDepth)
-          if (!cancelled) {
-            setBestMove(move)
-          }
-        } catch (error) {
-          console.error(`ChessBoard: getBestMove(${currentDepth}) failed:`, error)
+      try {
+        // Now getBestMove is async and runs on background thread
+        const move = await engine.getBestMove(currentDepth)
+        if (!cancelled) {
+          setBestMove(move)
         }
+      } catch (error) {
+        console.error(`ChessBoard: getBestMove(${currentDepth}) failed:`, error)
+      }
 
-        currentDepth++
+      currentDepth++
 
-        // Continue to next depth
-        if (currentDepth <= searchDepth && !cancelled) {
-          computeNextDepth()
-        }
-      })
+      // Continue to next depth
+      if (currentDepth <= searchDepth && !cancelled) {
+        computeNextDepth()
+      }
     }
 
     // Start computing after a short delay
