@@ -503,7 +503,7 @@ export default function ChessBoard({
           </TouchableOpacity>
 
           <Text style={styles.moveCounter}>
-            {historyIndex + 1} / {moveHistory.length || 1}
+            {moveHistory.length > 0 ? `${historyIndex + 1} / ${moveHistory.length}` : ''}
           </Text>
 
           <TouchableOpacity
@@ -544,24 +544,39 @@ export default function ChessBoard({
     const toCol = bestMove.charCodeAt(2) - 'a'.charCodeAt(0)
     const toRow = parseInt(bestMove[3]) - 1
 
-    const fromSquare = isFlipped ? (7 - fromRow) * 8 + (7 - fromCol) : fromRow * 8 + fromCol
-    const toSquare = isFlipped ? (7 - toRow) * 8 + (7 - toCol) : toRow * 8 + toCol
+    // Calculate which square index these map to
+    const fromSquare = fromRow * 8 + fromCol
+    const toSquare = toRow * 8 + toCol
 
-    const fromX = (fromSquare % 8) * squareSize + squareSize / 2
-    const fromY = (7 - Math.floor(fromSquare / 8)) * squareSize + squareSize / 2
-    const toX = (toSquare % 8) * squareSize + squareSize / 2
-    const toY = (7 - Math.floor(toSquare / 8)) * squareSize + squareSize / 2
+    // Calculate visual position based on flipping
+    const getVisualPosition = (square: number) => {
+      const row = Math.floor(square / 8)
+      const col = square % 8
 
-    const dx = toX - fromX
-    const dy = toY - fromY
+      // When rendering, we iterate row 7→0, creating visual rows 0→7
+      // Visual row index = 7 - row (when not flipped)
+      const visualRow = isFlipped ? row : 7 - row
+      const visualCol = isFlipped ? 7 - col : col
+
+      return {
+        x: visualCol * squareSize + squareSize / 2,
+        y: visualRow * squareSize + squareSize / 2,
+      }
+    }
+
+    const fromPos = getVisualPosition(fromSquare)
+    const toPos = getVisualPosition(toSquare)
+
+    const dx = toPos.x - fromPos.x
+    const dy = toPos.y - fromPos.y
     const angle = Math.atan2(dy, dx)
     const length = Math.sqrt(dx * dx + dy * dy)
 
     // Shorten the arrow to not overlap pieces
     const shortenBy = squareSize * 0.3
     const adjustedLength = length - shortenBy
-    const startX = fromX + Math.cos(angle) * (shortenBy / 2)
-    const startY = fromY + Math.sin(angle) * (shortenBy / 2)
+    const startX = fromPos.x + Math.cos(angle) * (shortenBy / 2)
+    const startY = fromPos.y + Math.sin(angle) * (shortenBy / 2)
 
     return (
       <View
@@ -570,25 +585,25 @@ export default function ChessBoard({
           left: startX,
           top: startY,
           width: adjustedLength,
-          height: 6,
-          backgroundColor: 'rgba(0, 255, 0, 0.7)',
-          transform: [{ translateX: -3 }, { translateY: -3 }, { rotate: `${angle}rad` }],
-          borderRadius: 3,
+          height: 12,
+          backgroundColor: 'rgba(0, 255, 0, 0.4)',
+          transform: [{ translateX: -6 }, { translateY: -6 }, { rotate: `${angle}rad` }],
+          borderRadius: 6,
         }}
       >
         {/* Arrowhead */}
         <View
           style={{
             position: 'absolute',
-            right: -8,
-            top: -5,
+            right: -12,
+            top: -8,
             width: 0,
             height: 0,
-            borderLeftWidth: 12,
-            borderLeftColor: 'rgba(0, 255, 0, 0.7)',
-            borderTopWidth: 8,
+            borderLeftWidth: 18,
+            borderLeftColor: 'rgba(0, 255, 0, 0.4)',
+            borderTopWidth: 14,
             borderTopColor: 'transparent',
-            borderBottomWidth: 8,
+            borderBottomWidth: 14,
             borderBottomColor: 'transparent',
           }}
         />
