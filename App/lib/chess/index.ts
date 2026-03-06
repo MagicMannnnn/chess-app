@@ -1,2 +1,2 @@
-export { ChessEngine } from './ChessEngine'
+export { ChessEngine } from './ChessEngineNative'
 export * from './types'

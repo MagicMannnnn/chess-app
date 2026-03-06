@@ -23,12 +23,12 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
     [PieceType.PAWN]: '♙',
   },
   [Color.BLACK]: {
-    [PieceType.KING]: '♔',
-    [PieceType.QUEEN]: '♕',
-    [PieceType.ROOK]: '♖',
-    [PieceType.BISHOP]: '♗',
-    [PieceType.KNIGHT]: '♘',
-    [PieceType.PAWN]: '♙',
+    [PieceType.KING]: '♚',
+    [PieceType.QUEEN]: '♛',
+    [PieceType.ROOK]: '♜',
+    [PieceType.BISHOP]: '♝',
+    [PieceType.KNIGHT]: '♞',
+    [PieceType.PAWN]: '♟',
   },
 }
 
@@ -38,11 +38,21 @@ interface ChessBoardProps {
 }
 
 export default function ChessBoard({ flipped = false, autoFlip = false }: ChessBoardProps) {
-  const [engine] = useState(() => new ChessEngine())
-  const [board, setBoard] = useState<(Piece | null)[]>(engine.getBoard())
+  const [engine] = useState(() => {
+    console.log('ChessBoard: Creating ChessEngine instance')
+    try {
+      const eng = new ChessEngine()
+      console.log('ChessBoard: ChessEngine instance created')
+      return eng
+    } catch (error) {
+      console.error('ChessBoard: Failed to create ChessEngine:', error)
+      throw error
+    }
+  })
+  const [board, setBoard] = useState<(Piece | null)[]>(Array(64).fill(null))
   const [selectedSquare, setSelectedSquare] = useState<number | null>(null)
   const [legalMoves, setLegalMoves] = useState<string[]>([])
-  const [currentPlayer, setCurrentPlayer] = useState<Color>(engine.getCurrentPlayer())
+  const [currentPlayer, setCurrentPlayer] = useState<Color>(Color.WHITE)
   const [isFlipped, setIsFlipped] = useState(flipped)
   const [gameStatus, setGameStatus] = useState<string>('')
   const [draggingSquare, setDraggingSquare] = useState<number | null>(null)
@@ -59,7 +69,17 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   const boardSize = squareSize * 8
 
   useEffect(() => {
-    updateGameState()
+    // Initialize the engine and board state after component mount
+    console.log('ChessBoard: useEffect - initializing')
+    try {
+      console.log('ChessBoard: Calling engine.newGame()')
+      engine.newGame()
+      console.log('ChessBoard: Calling updateGameState()')
+      updateGameState()
+      console.log('ChessBoard: Initialization complete')
+    } catch (error) {
+      console.error('ChessBoard: Error initializing chess engine:', error)
+    }
   }, [])
 
   useEffect(() => {
@@ -67,22 +87,30 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   }, [flipped])
 
   const updateGameState = () => {
-    setBoard(engine.getBoard())
-    setCurrentPlayer(engine.getCurrentPlayer())
+    try {
+      console.log('ChessBoard: updateGameState - getting board')
+      setBoard(engine.getBoard())
+      console.log('ChessBoard: updateGameState - getting current player')
+      setCurrentPlayer(engine.getCurrentPlayer())
 
-    let status = `${engine.getCurrentPlayer() === Color.WHITE ? 'White' : 'Black'} to move`
+      let status = `${engine.getCurrentPlayer() === Color.WHITE ? 'White' : 'Black'} to move`
 
-    if (engine.isInCheck()) {
-      status += ' - Check!'
+      console.log('ChessBoard: updateGameState - checking game state')
+      if (engine.isInCheck()) {
+        status += ' - Check!'
+      }
+
+      if (engine.isCheckmate()) {
+        status = `Checkmate! ${engine.getCurrentPlayer() === Color.WHITE ? 'Black' : 'White'} wins!`
+      } else if (engine.isStalemate()) {
+        status = 'Stalemate! Draw.'
+      }
+
+      setGameStatus(status)
+      console.log('ChessBoard: updateGameState - complete')
+    } catch (error) {
+      console.error('ChessBoard: updateGameState failed:', error)
     }
-
-    if (engine.isCheckmate()) {
-      status = `Checkmate! ${engine.getCurrentPlayer() === Color.WHITE ? 'Black' : 'White'} wins!`
-    } else if (engine.isStalemate()) {
-      status = 'Stalemate! Draw.'
-    }
-
-    setGameStatus(status)
   }
 
   const handleSquarePress = (square: number) => {

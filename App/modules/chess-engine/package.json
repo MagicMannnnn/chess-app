@@ -1,0 +1,26 @@
+{
+  "name": "chess-engine",
+  "version": "1.0.0",
+  "description": "Native C++ chess engine module for React Native",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "Chess App",
+  "homepage": "https://github.com/MagicMannnnn/chess-app",
+  "scripts": {},
+  "dependencies": {
+    "expo-modules-core": "*"
+  },
+  "devDependencies": {},
+  "expo-module": {
+    "ios": {
+      "modules": [
+        "ChessEngineModule"
+      ]
+    },
+    "android": {
+      "modules": [
+        "expo.modules.chessengine.ChessEngineModule"
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["ChessEngineModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.chessengine.ChessEngineModule"]
+  }
+}
