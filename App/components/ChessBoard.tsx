@@ -23,12 +23,12 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
     [PieceType.PAWN]: '♙',
   },
   [Color.BLACK]: {
-    [PieceType.KING]: '♚',
-    [PieceType.QUEEN]: '♛',
-    [PieceType.ROOK]: '♜',
-    [PieceType.BISHOP]: '♝',
-    [PieceType.KNIGHT]: '♞',
-    [PieceType.PAWN]: '♟',
+    [PieceType.KING]: '♔',
+    [PieceType.QUEEN]: '♕',
+    [PieceType.ROOK]: '♖',
+    [PieceType.BISHOP]: '♗',
+    [PieceType.KNIGHT]: '♘',
+    [PieceType.PAWN]: '♙',
   },
 }
 
@@ -89,7 +89,15 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   const updateGameState = () => {
     try {
       console.log('ChessBoard: updateGameState - getting board')
-      setBoard(engine.getBoard())
+      const newBoard = engine.getBoard()
+      console.log(
+        'ChessBoard: updateGameState - board received, sample pieces:',
+        newBoard
+          .slice(0, 8)
+          .map((p, i) => `${i}:${p ? p.type : 'null'}`)
+          .join(', '),
+      )
+      setBoard(newBoard)
       console.log('ChessBoard: updateGameState - getting current player')
       setCurrentPlayer(engine.getCurrentPlayer())
 
@@ -169,10 +177,13 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
       }
 
       if (engine.makeMove(move)) {
+        console.log('ChessBoard: Move successful:', move)
         if (autoFlip) {
           setIsFlipped(!isFlipped)
         }
         updateGameState()
+      } else {
+        console.log('ChessBoard: Move failed:', move)
       }
 
       setSelectedSquare(null)

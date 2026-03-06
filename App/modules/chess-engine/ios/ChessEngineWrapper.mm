@@ -1,5 +1,6 @@
 #import "ChessEngineWrapper.h"
 #include "ChessEngine.h"
+#include "Move.h"
 #include <string>
 #include <vector>
 
@@ -46,8 +47,52 @@ using namespace Chess;
         NSLog(@"ChessEngineWrapper: Engine is null in makeMove");
         return NO;
     }
+    NSLog(@"ChessEngineWrapper: makeMove called with: %@", move);
     std::string moveStr = [move UTF8String];
-    return _engine->makeMove(moveStr);
+    
+    // Parse and log the move details
+    Chess::Move parsedMove = Chess::Move::fromAlgebraic(moveStr);
+    NSLog(@"ChessEngineWrapper: Parsed move - from=%d to=%d isValid=%d", 
+          parsedMove.getFrom(), parsedMove.getTo(), parsedMove.isValid());
+    
+    // Check current state
+    std::string currentPlayer = _engine->getCurrentPlayerString();
+    NSLog(@"ChessEngineWrapper: Current player: %s", currentPlayer.c_str());
+    
+    // Check piece at from square
+    int fromRow = parsedMove.getFrom() / 8;
+    int fromCol = parsedMove.getFrom() % 8;
+    std::string pieceAtFrom = _engine->getPieceAt(fromRow, fromCol);
+    NSLog(@"ChessEngineWrapper: Piece at from square (%d,%d): %s", fromRow, fromCol, pieceAtFrom.c_str());
+    
+    // Check if move is legal
+    bool isLegal = _engine->isMoveLegal(moveStr);
+    NSLog(@"ChessEngineWrapper: isMoveLegal result: %d", isLegal);
+    
+    // Get legal moves from this square specifically
+    std::string fromSquare = std::string(1, 'a' + fromCol) + std::to_string(fromRow + 1);
+    NSLog(@"ChessEngineWrapper: Getting legal moves from square: %s", fromSquare.c_str());
+    std::vector<std::string> movesFromSquare = _engine->getLegalMovesFrom(fromSquare);
+    NSLog(@"ChessEngineWrapper: Legal moves from square %s: %zu moves", fromSquare.c_str(), movesFromSquare.size());
+    for (const auto& m : movesFromSquare) {
+        NSLog(@"ChessEngineWrapper:   - %s", m.c_str());
+    }
+    
+    // Get all legal moves to see what's available
+    std::vector<std::string> legalMoves = _engine->getLegalMoves();
+    NSLog(@"ChessEngineWrapper: Total legal moves available: %zu", legalMoves.size());
+    
+    bool result = _engine->makeMove(moveStr);
+    NSLog(@"ChessEngineWrapper: makeMove result: %d", result);
+    
+    // Log board state after move for debugging
+    if (result) {
+        std::string piece0 = _engine->getPieceAt(0, 0);
+        std::string piece4 = _engine->getPieceAt(0, 4);
+        NSLog(@"ChessEngineWrapper: After move - piece at (0,0): %s, piece at (0,4): %s", piece0.c_str(), piece4.c_str());
+    }
+    
+    return result;
 }
 
 - (void)undoMove {
@@ -142,6 +187,13 @@ using namespace Chess;
     }
     
     NSLog(@"ChessEngineWrapper: getBoard starting");
+    
+    // Log some pieces for debugging
+    std::string piece0 = _engine->getPieceAt(0, 0);
+    std::string piece4 = _engine->getPieceAt(0, 4);
+    std::string piece60 = _engine->getPieceAt(7, 4);
+    NSLog(@"ChessEngineWrapper: Sample pieces - (0,0): %s, (0,4): %s, (7,4): %s", piece0.c_str(), piece4.c_str(), piece60.c_str());
+    
     NSMutableArray *board = [NSMutableArray arrayWithCapacity:64];
     
     try {

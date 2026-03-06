@@ -57,7 +57,8 @@ export class ChessEngine {
       }
 
       const result = nativeBoard.map((piece, index) => {
-        if (!piece || piece === null) return null
+        // Check for null, undefined, or empty objects
+        if (!piece || piece === null || Object.keys(piece).length === 0) return null
         try {
           return {
             type: piece.type as PieceType,
@@ -92,8 +93,11 @@ export class ChessEngine {
 
   makeMove(algebraic: string): boolean {
     try {
+      console.log('ChessEngine: makeMove called with:', algebraic)
       if (!this.ensureInitialized()) return false
-      return this.nativeEngine!.makeMove(algebraic)
+      const result = this.nativeEngine!.makeMove(algebraic)
+      console.log('ChessEngine: makeMove result:', result)
+      return result
     } catch (error) {
       console.error('ChessEngine: makeMove failed:', error)
       return false
