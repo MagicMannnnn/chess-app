@@ -202,6 +202,36 @@ export class ChessEngine {
       return false
     }
   }
+
+  getBestMove(depth: number): string {
+    try {
+      if (!this.ensureInitialized()) return ''
+      return this.nativeEngine!.getBestMove(depth)
+    } catch (error) {
+      console.error('ChessEngine: getBestMove failed:', error)
+      return ''
+    }
+  }
+
+  getMoveHistory(): string[] {
+    try {
+      if (!this.ensureInitialized()) return []
+      return this.nativeEngine!.getMoveHistory()
+    } catch (error) {
+      console.error('ChessEngine: getMoveHistory failed:', error)
+      return []
+    }
+  }
+
+  canUndo(): boolean {
+    try {
+      if (!this.ensureInitialized()) return false
+      return this.nativeEngine!.canUndo()
+    } catch (error) {
+      console.error('ChessEngine: canUndo failed:', error)
+      return false
+    }
+  }
 }
 
 export { Color, type Piece, PieceType } from './types'

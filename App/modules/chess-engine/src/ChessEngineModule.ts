@@ -20,6 +20,9 @@ export interface ChessEngineModuleInterface {
   getBoard(): PieceInfo[]
   getFEN(): string
   loadFromFEN(fen: string): boolean
+  getBestMove(depth: number): string
+  getMoveHistory(): string[]
+  canUndo(): boolean
 }
 
 // It loads the native module object from the JSI or falls back to

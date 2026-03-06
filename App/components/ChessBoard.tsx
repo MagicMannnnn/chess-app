@@ -35,9 +35,16 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
 interface ChessBoardProps {
   flipped?: boolean
   autoFlip?: boolean
+  showBestMove?: boolean
+  searchDepth?: number
 }
 
-export default function ChessBoard({ flipped = false, autoFlip = false }: ChessBoardProps) {
+export default function ChessBoard({
+  flipped = false,
+  autoFlip = false,
+  showBestMove = false,
+  searchDepth = 3,
+}: ChessBoardProps) {
   const [engine] = useState(() => {
     console.log('ChessBoard: Creating ChessEngine instance')
     try {
@@ -58,6 +65,9 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
   const [draggingSquare, setDraggingSquare] = useState<number | null>(null)
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
+  const [bestMove, setBestMove] = useState<string>('')
+  const [moveHistory, setMoveHistory] = useState<string[]>([])
+  const [historyIndex, setHistoryIndex] = useState<number>(-1)
   const boardRef = useRef<View>(null)
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
@@ -115,9 +125,54 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
       }
 
       setGameStatus(status)
+
+      // Update move history
+      const history = engine.getMoveHistory()
+      setMoveHistory(history)
+      setHistoryIndex(history.length - 1)
+
       console.log('ChessBoard: updateGameState - complete')
     } catch (error) {
       console.error('ChessBoard: updateGameState failed:', error)
+    }
+  }
+
+  // Compute best move when game state changes and showBestMove is enabled
+  useEffect(() => {
+    if (!showBestMove || engine.isCheckmate() || engine.isStalemate()) {
+      setBestMove('')
+      return
+    }
+
+    // Use setTimeout to avoid blocking the UI
+    const timer = setTimeout(() => {
+      try {
+        const move = engine.getBestMove(searchDepth)
+        setBestMove(move)
+      } catch (error) {
+        console.error('ChessBoard: getBestMove failed:', error)
+        setBestMove('')
+      }
+    }, 100)
+
+    return () => clearTimeout(timer)
+  }, [board, showBestMove, searchDepth, engine])
+
+  const handlePrevMove = () => {
+    if (historyIndex < 0) return
+    engine.undoMove()
+    updateGameState()
+    setHistoryIndex(historyIndex - 1)
+  }
+
+  const handleNextMove = () => {
+    if (historyIndex >= moveHistory.length - 1) return
+    // Redo by making the move again
+    const move = moveHistory[historyIndex + 1]
+    if (move) {
+      engine.makeMove(move)
+      updateGameState()
+      setHistoryIndex(historyIndex + 1)
     }
   }
 
@@ -417,10 +472,52 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
               </View>
             )}
           </View>
+
+          {/* Best move arrow */}
+          {showBestMove && bestMove && bestMove.length >= 4 && (
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              {renderBestMoveArrow()}
+            </View>
+          )}
         </View>
       </View>
 
       <View style={styles.controls}>
+        {/* Navigation buttons */}
+        <View style={styles.navigationRow}>
+          <TouchableOpacity
+            style={[styles.navButton, historyIndex < 0 && styles.navButtonDisabled]}
+            onPress={handlePrevMove}
+            disabled={historyIndex < 0}
+          >
+            <Text style={styles.navButtonText}>{'←'}</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.moveCounter}>
+            {historyIndex + 1} / {moveHistory.length || 1}
+          </Text>
+
+          <TouchableOpacity
+            style={[
+              styles.navButton,
+              historyIndex >= moveHistory.length - 1 && styles.navButtonDisabled,
+            ]}
+            onPress={handleNextMove}
+            disabled={historyIndex >= moveHistory.length - 1}
+          >
+            <Text style={styles.navButtonText}>{'→'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity style={styles.button} onPress={handleRestart}>
           <Text style={styles.buttonText}>New Game</Text>
         </TouchableOpacity>
@@ -434,9 +531,70 @@ export default function ChessBoard({ flipped = false, autoFlip = false }: ChessB
 
       <View style={styles.info}>
         <Text style={styles.infoText}>Tap piece, then tap destination</Text>
+        {showBestMove && bestMove && <Text style={styles.bestMoveText}>Best move: {bestMove}</Text>}
       </View>
     </SafeAreaView>
   )
+
+  function renderBestMoveArrow() {
+    if (!bestMove || bestMove.length < 4) return null
+
+    const fromCol = bestMove.charCodeAt(0) - 'a'.charCodeAt(0)
+    const fromRow = parseInt(bestMove[1]) - 1
+    const toCol = bestMove.charCodeAt(2) - 'a'.charCodeAt(0)
+    const toRow = parseInt(bestMove[3]) - 1
+
+    const fromSquare = isFlipped ? (7 - fromRow) * 8 + (7 - fromCol) : fromRow * 8 + fromCol
+    const toSquare = isFlipped ? (7 - toRow) * 8 + (7 - toCol) : toRow * 8 + toCol
+
+    const fromX = (fromSquare % 8) * squareSize + squareSize / 2
+    const fromY = (7 - Math.floor(fromSquare / 8)) * squareSize + squareSize / 2
+    const toX = (toSquare % 8) * squareSize + squareSize / 2
+    const toY = (7 - Math.floor(toSquare / 8)) * squareSize + squareSize / 2
+
+    const dx = toX - fromX
+    const dy = toY - fromY
+    const angle = Math.atan2(dy, dx)
+    const length = Math.sqrt(dx * dx + dy * dy)
+
+    // Shorten the arrow to not overlap pieces
+    const shortenBy = squareSize * 0.3
+    const adjustedLength = length - shortenBy
+    const startX = fromX + Math.cos(angle) * (shortenBy / 2)
+    const startY = fromY + Math.sin(angle) * (shortenBy / 2)
+
+    return (
+      <View
+        style={{
+          position: 'absolute',
+          left: startX,
+          top: startY,
+          width: adjustedLength,
+          height: 6,
+          backgroundColor: 'rgba(0, 255, 0, 0.7)',
+          transform: [{ translateX: -3 }, { translateY: -3 }, { rotate: `${angle}rad` }],
+          borderRadius: 3,
+        }}
+      >
+        {/* Arrowhead */}
+        <View
+          style={{
+            position: 'absolute',
+            right: -8,
+            top: -5,
+            width: 0,
+            height: 0,
+            borderLeftWidth: 12,
+            borderLeftColor: 'rgba(0, 255, 0, 0.7)',
+            borderTopWidth: 8,
+            borderTopColor: 'transparent',
+            borderBottomWidth: 8,
+            borderBottomColor: 'transparent',
+          }}
+        />
+      </View>
+    )
+  }
 }
 
 const styles = StyleSheet.create({
@@ -492,10 +650,39 @@ const styles = StyleSheet.create({
     borderRadius: 100,
   },
   controls: {
-    flexDirection: 'row',
     paddingVertical: theme.spacing.sm,
     gap: theme.spacing.sm,
+    alignItems: 'center',
+  },
+  navigationRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.md,
+    alignItems: 'center',
     justifyContent: 'center',
+  },
+  navButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderRadius: theme.borderRadius.sm,
+    minWidth: 50,
+  },
+  navButtonDisabled: {
+    backgroundColor: theme.colors.background.medium,
+    opacity: 0.5,
+  },
+  navButtonText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  moveCounter: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.text.primary,
+    fontWeight: '600',
+    minWidth: 60,
+    textAlign: 'center',
   },
   button: {
     backgroundColor: theme.colors.primary,
@@ -519,5 +706,11 @@ const styles = StyleSheet.create({
     color: theme.colors.secondary,
     textAlign: 'center',
     marginBottom: theme.spacing.xs,
+  },
+  bestMoveText: {
+    fontSize: theme.fontSize.sm,
+    color: 'rgb(0, 200, 0)',
+    textAlign: 'center',
+    fontWeight: '600',
   },
 })

@@ -14,13 +14,13 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
 
   # iOS wrapper files and C++ engine source files (symlinked into ios directory)
-  s.source_files = "*.{h,m,mm,swift,cpp}"
+  s.source_files = "*.{h,m,mm,swift,cpp}", "v1/**/*.{h,cpp}"
   
   # Only expose the Objective-C++ wrapper header, not the C++ headers
   s.public_header_files = "ChessEngineWrapper.h"
   
   # C++ headers should be private (for internal use only)
-  s.private_header_files = "ChessEngine.h", "Board.h", "Move.h", "Types.h"
+  s.private_header_files = "ChessEngine.h", "Board.h", "Move.h", "Types.h", "v1/Evaluation.h", "v1/Search.h"
   
   # Compiler settings - make sure to compile as C++
   s.compiler_flags = '-std=c++17'

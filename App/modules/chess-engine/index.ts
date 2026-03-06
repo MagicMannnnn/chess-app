@@ -88,6 +88,18 @@ export class ChessEngine {
   loadFromFEN(fen: string): boolean {
     return ChessEngineModule.loadFromFEN(fen)
   }
+
+  getBestMove(depth: number): string {
+    return ChessEngineModule.getBestMove(depth)
+  }
+
+  getMoveHistory(): string[] {
+    return ChessEngineModule.getMoveHistory()
+  }
+
+  canUndo(): boolean {
+    return ChessEngineModule.canUndo()
+  }
 }
 
 export default ChessEngine

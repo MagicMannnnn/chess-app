@@ -167,6 +167,33 @@ public class ChessEngineModule: Module {
       }
       return engine.load(fromFEN: fen)
     }
+    
+    Function("getBestMove") { (depth: Int) -> String in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in getBestMove")
+        return ""
+      }
+      return engine.getBestMove(Int32(depth))
+    }
+    
+    Function("getMoveHistory") { () -> [String] in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in getMoveHistory")
+        return []
+      }
+      return engine.getMoveHistory()
+    }
+    
+    Function("canUndo") { () -> Bool in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in canUndo")
+        return false
+      }
+      return engine.canUndo()
+    }
   }
   
   private func ensureInitialized() {

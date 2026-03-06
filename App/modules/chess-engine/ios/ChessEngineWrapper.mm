@@ -261,4 +261,33 @@ using namespace Chess;
     return _engine->loadFromFEN(fenStr);
 }
 
+- (NSString *)getBestMove:(int)depth {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in getBestMove");
+        return @"";
+    }
+    std::string bestMove = _engine->getBestMove(depth);
+    return [NSString stringWithUTF8String:bestMove.c_str()];
+}
+
+- (NSArray<NSString *> *)getMoveHistory {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in getMoveHistory");
+        return @[];
+    }
+    std::vector<std::string> history = _engine->getMoveHistory();
+    NSMutableArray *result = [NSMutableArray arrayWithCapacity:history.size()];
+    for (const auto& move : history) {
+        [result addObject:[NSString stringWithUTF8String:move.c_str()]];
+    }
+    return result;
+}
+
+- (BOOL)canUndo {
+    if (!_engine) {
+        return NO;
+    }
+    return _engine->canUndo();
+}
+
 @end
