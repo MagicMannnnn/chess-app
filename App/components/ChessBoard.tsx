@@ -138,24 +138,49 @@ export default function ChessBoard({
   }
 
   // Compute best move when game state changes and showBestMove is enabled
+  // Uses iterative deepening to keep UI responsive
   useEffect(() => {
     if (!showBestMove || engine.isCheckmate() || engine.isStalemate()) {
       setBestMove('')
       return
     }
 
-    // Use setTimeout to avoid blocking the UI
-    const timer = setTimeout(() => {
-      try {
-        const move = engine.getBestMove(searchDepth)
-        setBestMove(move)
-      } catch (error) {
-        console.error('ChessBoard: getBestMove failed:', error)
-        setBestMove('')
-      }
-    }, 100)
+    let cancelled = false
+    let currentDepth = 1
 
-    return () => clearTimeout(timer)
+    // Recursive function to compute one depth at a time
+    const computeNextDepth = () => {
+      if (cancelled || currentDepth > searchDepth) return
+
+      // Use setImmediate to truly yield to event loop
+      setImmediate(() => {
+        if (cancelled) return
+
+        try {
+          const move = engine.getBestMove(currentDepth)
+          if (!cancelled) {
+            setBestMove(move)
+          }
+        } catch (error) {
+          console.error(`ChessBoard: getBestMove(${currentDepth}) failed:`, error)
+        }
+
+        currentDepth++
+
+        // Continue to next depth
+        if (currentDepth <= searchDepth && !cancelled) {
+          computeNextDepth()
+        }
+      })
+    }
+
+    // Start computing after a short delay
+    const timer = setTimeout(computeNextDepth, 50)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [board, showBestMove, searchDepth, engine])
 
   const handlePrevMove = () => {
@@ -544,50 +569,45 @@ export default function ChessBoard({
     const toCol = bestMove.charCodeAt(2) - 'a'.charCodeAt(0)
     const toRow = parseInt(bestMove[3]) - 1
 
-    // Calculate which square index these map to
-    const fromSquare = fromRow * 8 + fromCol
-    const toSquare = toRow * 8 + toCol
-
-    // Calculate visual position based on flipping
-    const getVisualPosition = (square: number) => {
-      const row = Math.floor(square / 8)
-      const col = square % 8
-
-      // When rendering, we iterate row 7→0, creating visual rows 0→7
-      // Visual row index = 7 - row (when not flipped)
+    // Calculate visual positions using same logic as board rendering
+    // The board renders squares with: for row=7 down to 0, col=0 to 7
+    const getVisualPos = (row: number, col: number) => {
+      // Apply flipping
       const visualRow = isFlipped ? row : 7 - row
       const visualCol = isFlipped ? 7 - col : col
-
       return {
         x: visualCol * squareSize + squareSize / 2,
         y: visualRow * squareSize + squareSize / 2,
       }
     }
 
-    const fromPos = getVisualPosition(fromSquare)
-    const toPos = getVisualPosition(toSquare)
+    const fromPos = getVisualPos(fromRow, fromCol)
+    const toPos = getVisualPos(toRow, toCol)
 
     const dx = toPos.x - fromPos.x
     const dy = toPos.y - fromPos.y
     const angle = Math.atan2(dy, dx)
     const length = Math.sqrt(dx * dx + dy * dy)
 
-    // Shorten the arrow to not overlap pieces
-    const shortenBy = squareSize * 0.3
-    const adjustedLength = length - shortenBy
-    const startX = fromPos.x + Math.cos(angle) * (shortenBy / 2)
-    const startY = fromPos.y + Math.sin(angle) * (shortenBy / 2)
+    const arrowHeight = 12
 
+    // Position the arrow so its left-center starts at fromPos
+    // After rotation, adjust position
+    const startX = fromPos.x
+    const startY = fromPos.y - arrowHeight / 2
+
+    // Arrow goes from center to center
     return (
       <View
         style={{
           position: 'absolute',
           left: startX,
           top: startY,
-          width: adjustedLength,
-          height: 12,
+          width: length,
+          height: arrowHeight,
           backgroundColor: 'rgba(0, 255, 0, 0.4)',
-          transform: [{ translateX: -6 }, { translateY: -6 }, { rotate: `${angle}rad` }],
+          transform: [{ rotate: `${angle}rad` }],
+          transformOrigin: 'left center',
           borderRadius: 6,
         }}
       >
