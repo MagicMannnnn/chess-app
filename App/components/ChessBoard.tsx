@@ -70,6 +70,10 @@ export default function ChessBoard({
   const [bestMove, setBestMove] = useState<string>('')
   const [moveHistory, setMoveHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState<number>(-1)
+  const [capturedPieces, setCapturedPieces] = useState<{
+    white: Piece[]
+    black: Piece[]
+  }>({ white: [], black: [] })
   const boardRef = useRef<View>(null)
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
@@ -115,6 +119,78 @@ export default function ChessBoard({
           .map((p, i) => `${i}:${p ? p.type : 'null'}`)
           .join(', '),
       )
+
+      // Calculate captured pieces
+      const startingPieces = {
+        white: {
+          [PieceType.PAWN]: 8,
+          [PieceType.KNIGHT]: 2,
+          [PieceType.BISHOP]: 2,
+          [PieceType.ROOK]: 2,
+          [PieceType.QUEEN]: 1,
+          [PieceType.KING]: 1,
+        },
+        black: {
+          [PieceType.PAWN]: 8,
+          [PieceType.KNIGHT]: 2,
+          [PieceType.BISHOP]: 2,
+          [PieceType.ROOK]: 2,
+          [PieceType.QUEEN]: 1,
+          [PieceType.KING]: 1,
+        },
+      }
+
+      // Count remaining pieces
+      const remainingPieces = {
+        white: {
+          [PieceType.PAWN]: 0,
+          [PieceType.KNIGHT]: 0,
+          [PieceType.BISHOP]: 0,
+          [PieceType.ROOK]: 0,
+          [PieceType.QUEEN]: 0,
+          [PieceType.KING]: 0,
+        },
+        black: {
+          [PieceType.PAWN]: 0,
+          [PieceType.KNIGHT]: 0,
+          [PieceType.BISHOP]: 0,
+          [PieceType.ROOK]: 0,
+          [PieceType.QUEEN]: 0,
+          [PieceType.KING]: 0,
+        },
+      }
+
+      newBoard.forEach((piece) => {
+        if (piece) {
+          remainingPieces[piece.color][piece.type]++
+        }
+      })
+
+      // Calculate captured pieces
+      const captured = {
+        white: [] as Piece[],
+        black: [] as Piece[],
+      }
+
+      // Pieces captured from white (stored in black's captured list)
+      Object.entries(startingPieces.white).forEach(([type, count]) => {
+        const remaining = remainingPieces.white[type as PieceType]
+        const capturedCount = count - remaining
+        for (let i = 0; i < capturedCount; i++) {
+          captured.black.push({ type: type as PieceType, color: Color.WHITE })
+        }
+      })
+
+      // Pieces captured from black (stored in white's captured list)
+      Object.entries(startingPieces.black).forEach(([type, count]) => {
+        const remaining = remainingPieces.black[type as PieceType]
+        const capturedCount = count - remaining
+        for (let i = 0; i < capturedCount; i++) {
+          captured.white.push({ type: type as PieceType, color: Color.BLACK })
+        }
+      })
+
+      setCapturedPieces(captured)
       setBoard(newBoard)
       console.log('ChessBoard: updateGameState - getting current player')
       const player = engine.getCurrentPlayer()
@@ -474,6 +550,47 @@ export default function ChessBoard({
         <Text style={styles.statusText}>{gameStatus}</Text>
       </View>
 
+      {/* Captured Pieces Display */}
+      <View style={styles.capturedPiecesContainer}>
+        {/* Black's captured pieces (pieces taken from white) */}
+        <View style={styles.capturedPiecesRow}>
+          <Text style={styles.capturedLabel}>Black captured:</Text>
+          <View style={styles.capturedPieces}>
+            {capturedPieces.black.map((piece, idx) => (
+              <Text
+                key={idx}
+                style={[
+                  styles.capturedPiece,
+                  { color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000' },
+                ]}
+              >
+                {UNICODE_PIECES[piece.color][piece.type]}
+              </Text>
+            ))}
+            {capturedPieces.black.length === 0 && <Text style={styles.noPieces}>None</Text>}
+          </View>
+        </View>
+
+        {/* White's captured pieces (pieces taken from black) */}
+        <View style={styles.capturedPiecesRow}>
+          <Text style={styles.capturedLabel}>White captured:</Text>
+          <View style={styles.capturedPieces}>
+            {capturedPieces.white.map((piece, idx) => (
+              <Text
+                key={idx}
+                style={[
+                  styles.capturedPiece,
+                  { color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000' },
+                ]}
+              >
+                {UNICODE_PIECES[piece.color][piece.type]}
+              </Text>
+            ))}
+            {capturedPieces.white.length === 0 && <Text style={styles.noPieces}>None</Text>}
+          </View>
+        </View>
+      </View>
+
       <View style={styles.boardContainer}>
         <View style={styles.boardWrapper} ref={boardWrapperRef}>
           <View
@@ -771,5 +888,39 @@ const styles = StyleSheet.create({
     color: 'rgb(0, 200, 0)',
     textAlign: 'center',
     fontWeight: '600',
+  },
+  capturedPiecesContainer: {
+    width: '100%',
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.xs,
+    backgroundColor: theme.colors.background.dark,
+  },
+  capturedPiecesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.xs,
+  },
+  capturedLabel: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.text.light,
+    fontWeight: '600',
+    marginRight: theme.spacing.sm,
+    width: 115,
+  },
+  capturedPieces: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  capturedPiece: {
+    fontSize: 20,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 2,
+  },
+  noPieces: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.secondary,
+    fontStyle: 'italic',
   },
 })

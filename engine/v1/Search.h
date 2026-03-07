@@ -6,6 +6,8 @@
 #include "../Core/Move.h"
 #include <string>
 #include <functional>
+#include <vector>
+#include <array>
 
 namespace Chess {
 namespace V1 {
@@ -30,14 +32,24 @@ public:
     );
     
 private:
+    // Killer moves for move ordering (2 moves per depth)
+    static constexpr int MAX_DEPTH = 64;
+    static std::array<std::array<Move, 2>, MAX_DEPTH> killerMoves;
+    
     static int minimax(
         Board& board,
         int depth,
         int alpha,
         int beta,
         bool maximizing,
-        int& nodesSearched
+        int& nodesSearched,
+        int ply
     );
+    
+    // Move ordering helpers
+    static int getMoveScore(const Board& board, const Move& move, int ply);
+    static int getPieceValue(PieceType type);
+    static void orderMoves(Board& board, std::vector<Move>& moves, int ply);
     
     static constexpr int INFINITY_SCORE = 1000000;
 };
