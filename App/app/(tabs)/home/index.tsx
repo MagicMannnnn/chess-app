@@ -1,25 +1,13 @@
-import { StyleSheet, Text, View } from 'react-native'
-
-import { theme } from '@/constants/theme'
+import { useEffect } from 'react'
+import { useRouter } from 'expo-router'
 
 export default function HomeScreen() {
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Home</Text>
-    </View>
-  )
-}
+  const router = useRouter()
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: theme.colors.background.light,
-  },
-  title: {
-    fontSize: theme.fontSize.xl,
-    fontWeight: 'bold',
-    color: theme.colors.text.light,
-  },
-})
+  useEffect(() => {
+    // Redirect to setup screen
+    router.replace('/home/setup')
+  }, [router])
+
+  return null
+}

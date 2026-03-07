@@ -24,7 +24,9 @@ export default function HomeStack() {
         ),
       }}
     >
-      <Stack.Screen name="index" options={{ title: 'Home' }} />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="setup" options={{ title: 'New Game' }} />
+      <Stack.Screen name="game" options={{ title: 'Game' }} />
     </Stack>
   )
 }

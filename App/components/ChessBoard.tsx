@@ -36,14 +36,26 @@ interface ChessBoardProps {
   flipped?: boolean
   autoFlip?: boolean
   searchDepth?: number
+  maxSearchTime?: number // milliseconds
+  playerMode?: string
+  isAIEnabled?: boolean
+  hideBestMove?: boolean
   onEvaluationChange?: (evaluation: number, depth: number) => void
+  onBestMoveChange?: (move: string) => void
+  onCurrentPlayerChange?: (player: Color) => void
 }
 
 export default function ChessBoard({
   flipped = false,
   autoFlip = false,
   searchDepth = 3,
+  maxSearchTime,
+  playerMode: _playerMode,
+  isAIEnabled = false,
+  hideBestMove = false,
   onEvaluationChange,
+  onBestMoveChange,
+  onCurrentPlayerChange,
 }: ChessBoardProps) {
   const [engine] = useState(() => {
     console.log('ChessBoard: Creating ChessEngine instance')
@@ -66,6 +78,7 @@ export default function ChessBoard({
   const [dragPosition, setDragPosition] = useState<{ x: number; y: number } | null>(null)
   const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
   const [bestMove, setBestMove] = useState<string>('')
+  const [searchComplete, setSearchComplete] = useState(false)
   const [moveHistory, setMoveHistory] = useState<string[]>([])
   const [historyIndex, setHistoryIndex] = useState<number>(-1)
   const [capturedPieces, setCapturedPieces] = useState<{
@@ -77,6 +90,8 @@ export default function ChessBoard({
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
   const onEvaluationChangeRef = useRef(onEvaluationChange)
+  const onBestMoveChangeRef = useRef(onBestMoveChange)
+  const onCurrentPlayerChangeRef = useRef(onCurrentPlayerChange)
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
   // Maximize board size - ultra minimal spacing
   const maxBoardSize = Math.min(screenWidth * 0.98, (screenHeight - 125) * 0.98)
@@ -106,6 +121,14 @@ export default function ChessBoard({
   useEffect(() => {
     onEvaluationChangeRef.current = onEvaluationChange
   }, [onEvaluationChange])
+
+  useEffect(() => {
+    onBestMoveChangeRef.current = onBestMoveChange
+  }, [onBestMoveChange])
+
+  useEffect(() => {
+    onCurrentPlayerChangeRef.current = onCurrentPlayerChange
+  }, [onCurrentPlayerChange])
 
   const updateGameState = () => {
     try {
@@ -209,6 +232,12 @@ export default function ChessBoard({
       const player = engine.getCurrentPlayer()
       setCurrentPlayer(player)
 
+      // Notify parent of player change
+      const playerCallback = onCurrentPlayerChangeRef.current
+      if (playerCallback) {
+        playerCallback(player)
+      }
+
       let status = `${player === Color.WHITE ? 'White' : 'Black'} to move`
 
       console.log('ChessBoard: updateGameState - checking game state')
@@ -249,23 +278,58 @@ export default function ChessBoard({
   useEffect(() => {
     if (engine.isCheckmate() || engine.isStalemate()) {
       setBestMove('')
+      setSearchComplete(true)
       return
     }
 
+    // Reset search complete flag when starting new search
+    setSearchComplete(false)
+
     let cancelled = false
     let currentDepth = 1
+    let lastBestMove = ''
     // Cache current player to avoid repeated calls during search
     const playerColor = currentPlayer
+    const startTime = Date.now()
 
     // Recursive function to compute one depth at a time
     const computeNextDepth = async () => {
-      if (cancelled || currentDepth > searchDepth) return
+      // Check time limit
+      if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
+        // Time limit reached, use best move found so far
+        if (cancelled) return
+        cancelled = true
+
+        const moveCallback = onBestMoveChangeRef.current
+        if (moveCallback && lastBestMove) {
+          moveCallback(lastBestMove)
+        }
+
+        // Mark search as complete
+        setSearchComplete(true)
+        return
+      }
+
+      if (cancelled || currentDepth > searchDepth) {
+        // Reached max depth - mark search as complete
+        if (!cancelled) {
+          setSearchComplete(true)
+        }
+        return
+      }
 
       try {
         // Now getBestMove is async and runs on background thread
         const move = await engine.getBestMove(currentDepth)
         if (!cancelled) {
+          lastBestMove = move
           setBestMove(move)
+
+          // Notify parent of best move change
+          const moveCallback = onBestMoveChangeRef.current
+          if (moveCallback) {
+            moveCallback(move)
+          }
 
           // Update evaluation at this depth (from white's perspective)
           const evalCallback = onEvaluationChangeRef.current
@@ -284,6 +348,9 @@ export default function ChessBoard({
       // Continue to next depth
       if (currentDepth <= searchDepth && !cancelled) {
         computeNextDepth()
+      } else if (!cancelled) {
+        // Finished all depths
+        setSearchComplete(true)
       }
     }
 
@@ -294,7 +361,37 @@ export default function ChessBoard({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [board, searchDepth, engine])
+  }, [board, searchDepth, maxSearchTime, engine])
+
+  // Auto-play AI moves when enabled
+  useEffect(() => {
+    if (
+      !isAIEnabled ||
+      !bestMove ||
+      !searchComplete ||
+      engine.isCheckmate() ||
+      engine.isStalemate()
+    ) {
+      return
+    }
+
+    // Wait a brief moment before making the AI move (for better UX)
+    const timer = setTimeout(() => {
+      try {
+        console.log(`ChessBoard: AI making move: ${bestMove}`)
+        if (engine.makeMove(bestMove)) {
+          if (autoFlip) {
+            setIsFlipped(!isFlipped)
+          }
+          updateGameState()
+        }
+      } catch (error) {
+        console.error('ChessBoard: AI move failed:', error)
+      }
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [isAIEnabled, bestMove, searchComplete, engine, autoFlip, isFlipped])
 
   const handlePreviousMove = () => {
     if (historyIndex <= 0) return
@@ -638,7 +735,7 @@ export default function ChessBoard({
           </View>
 
           {/* Best move arrow */}
-          {bestMove && bestMove.length >= 4 && (
+          {!hideBestMove && bestMove && bestMove.length >= 4 && (
             <View
               style={{
                 position: 'absolute',
@@ -687,7 +784,7 @@ export default function ChessBoard({
             <Text style={styles.buttonText}>→</Text>
           </TouchableOpacity>
         </View>
-        {bestMove && <Text style={styles.bestMoveText}>Best: {bestMove}</Text>}
+        {!hideBestMove && bestMove && <Text style={styles.bestMoveText}>Best: {bestMove}</Text>}
       </View>
     </SafeAreaView>
   )
