@@ -35,7 +35,6 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
 interface ChessBoardProps {
   flipped?: boolean
   autoFlip?: boolean
-  showBestMove?: boolean
   searchDepth?: number
   onEvaluationChange?: (evaluation: number, depth: number) => void
 }
@@ -43,7 +42,6 @@ interface ChessBoardProps {
 export default function ChessBoard({
   flipped = false,
   autoFlip = false,
-  showBestMove = false,
   searchDepth = 3,
   onEvaluationChange,
 }: ChessBoardProps) {
@@ -73,14 +71,15 @@ export default function ChessBoard({
   const [capturedPieces, setCapturedPieces] = useState<{
     white: Piece[]
     black: Piece[]
+    materialAdvantage?: number
   }>({ white: [], black: [] })
   const boardRef = useRef<View>(null)
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
   const onEvaluationChangeRef = useRef(onEvaluationChange)
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
-  // Use 90% of screen width or 90% of available height (minus space for status/controls), whichever is smaller
-  const maxBoardSize = Math.min(screenWidth * 0.9, (screenHeight - 250) * 0.9)
+  // Maximize board size - ultra minimal spacing
+  const maxBoardSize = Math.min(screenWidth * 0.98, (screenHeight - 125) * 0.98)
   // Calculate square size and board size to ensure exactly 8x8 grid
   const squareSize = Math.floor(maxBoardSize / 8)
   const boardSize = squareSize * 8
@@ -190,7 +189,21 @@ export default function ChessBoard({
         }
       })
 
-      setCapturedPieces(captured)
+      // Calculate material values
+      const pieceValues = {
+        [PieceType.PAWN]: 1,
+        [PieceType.KNIGHT]: 3,
+        [PieceType.BISHOP]: 3,
+        [PieceType.ROOK]: 5,
+        [PieceType.QUEEN]: 9,
+        [PieceType.KING]: 0,
+      }
+
+      const whiteMaterial = captured.white.reduce((sum, p) => sum + pieceValues[p.type], 0)
+      const blackMaterial = captured.black.reduce((sum, p) => sum + pieceValues[p.type], 0)
+      const materialAdvantage = whiteMaterial - blackMaterial
+
+      setCapturedPieces({ ...captured, materialAdvantage } as any)
       setBoard(newBoard)
       console.log('ChessBoard: updateGameState - getting current player')
       const player = engine.getCurrentPlayer()
@@ -231,10 +244,10 @@ export default function ChessBoard({
     }
   }
 
-  // Compute best move when game state changes and showBestMove is enabled
+  // Compute best move when game state changes
   // Uses iterative deepening to keep UI responsive
   useEffect(() => {
-    if (!showBestMove || engine.isCheckmate() || engine.isStalemate()) {
+    if (engine.isCheckmate() || engine.isStalemate()) {
       setBestMove('')
       return
     }
@@ -281,10 +294,11 @@ export default function ChessBoard({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [board, showBestMove, searchDepth, engine])
+  }, [board, searchDepth, engine])
 
-  const handlePrevMove = () => {
-    if (historyIndex < 0) return
+  const handlePreviousMove = () => {
+    if (historyIndex <= 0) return
+    // Undo by reverting to previous state
     engine.undoMove()
     updateGameState()
     setHistoryIndex(historyIndex - 1)
@@ -517,11 +531,8 @@ export default function ChessBoard({
               style={[
                 styles.piece,
                 {
-                  fontSize: squareSize * 0.7,
+                  fontSize: squareSize * 0.75,
                   color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000',
-                  textShadowColor: piece.color === Color.WHITE ? '#000000' : '#FFFFFF',
-                  textShadowOffset: { width: 0, height: 0 },
-                  textShadowRadius: 3,
                 },
               ]}
             >
@@ -544,49 +555,40 @@ export default function ChessBoard({
     return squares
   }
 
+  const materialAdv = capturedPieces.materialAdvantage || 0
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Compact Header with Status and Captured Pieces */}
+      <View style={styles.compactHeader}>
         <Text style={styles.statusText}>{gameStatus}</Text>
-      </View>
 
-      {/* Captured Pieces Display */}
-      <View style={styles.capturedPiecesContainer}>
-        {/* Black's captured pieces (pieces taken from white) */}
-        <View style={styles.capturedPiecesRow}>
-          <Text style={styles.capturedLabel}>Black captured:</Text>
-          <View style={styles.capturedPieces}>
-            {capturedPieces.black.map((piece, idx) => (
-              <Text
-                key={idx}
-                style={[
-                  styles.capturedPiece,
-                  { color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000' },
-                ]}
-              >
-                {UNICODE_PIECES[piece.color][piece.type]}
-              </Text>
-            ))}
-            {capturedPieces.black.length === 0 && <Text style={styles.noPieces}>None</Text>}
+        {/* Material Advantage & Captured Pieces in one line */}
+        <View style={styles.materialContainer}>
+          <View style={styles.capturedRow}>
+            <Text style={styles.sideLabel}>⚫</Text>
+            <View style={styles.capturedList}>
+              {capturedPieces.black.map((piece, idx) => (
+                <Text key={idx} style={styles.capturedPieceCompact}>
+                  {UNICODE_PIECES[piece.color][piece.type]}
+                </Text>
+              ))}
+            </View>
+            {materialAdv < 0 && (
+              <Text style={styles.materialAdvantage}>+{Math.abs(materialAdv)}</Text>
+            )}
           </View>
-        </View>
 
-        {/* White's captured pieces (pieces taken from black) */}
-        <View style={styles.capturedPiecesRow}>
-          <Text style={styles.capturedLabel}>White captured:</Text>
-          <View style={styles.capturedPieces}>
-            {capturedPieces.white.map((piece, idx) => (
-              <Text
-                key={idx}
-                style={[
-                  styles.capturedPiece,
-                  { color: piece.color === Color.WHITE ? '#FFFFFF' : '#000000' },
-                ]}
-              >
-                {UNICODE_PIECES[piece.color][piece.type]}
-              </Text>
-            ))}
-            {capturedPieces.white.length === 0 && <Text style={styles.noPieces}>None</Text>}
+          <View style={styles.capturedRow}>
+            <Text style={styles.sideLabel}>⚪</Text>
+            <View style={styles.capturedList}>
+              {capturedPieces.white.map((piece, idx) => (
+                <Text key={idx} style={styles.capturedPieceCompact}>
+                  {UNICODE_PIECES[piece.color][piece.type]}
+                </Text>
+              ))}
+            </View>
+            {materialAdv > 0 && <Text style={styles.materialAdvantage}>+{materialAdv}</Text>}
           </View>
         </View>
       </View>
@@ -623,12 +625,8 @@ export default function ChessBoard({
                   style={[
                     styles.piece,
                     {
-                      fontSize: squareSize * 0.7,
+                      fontSize: squareSize * 0.75,
                       color: board[draggingSquare]?.color === Color.WHITE ? '#FFFFFF' : '#000000',
-                      textShadowColor:
-                        board[draggingSquare]?.color === Color.WHITE ? '#000000' : '#FFFFFF',
-                      textShadowOffset: { width: 0, height: 0 },
-                      textShadowRadius: 3,
                     },
                   ]}
                 >
@@ -640,7 +638,7 @@ export default function ChessBoard({
           </View>
 
           {/* Best move arrow */}
-          {showBestMove && bestMove && bestMove.length >= 4 && (
+          {bestMove && bestMove.length >= 4 && (
             <View
               style={{
                 position: 'absolute',
@@ -657,47 +655,39 @@ export default function ChessBoard({
         </View>
       </View>
 
-      <View style={styles.controls}>
-        {/* Navigation buttons */}
-        <View style={styles.navigationRow}>
+      {/* Compact Controls */}
+      <View style={styles.compactControls}>
+        <View style={styles.controlRow}>
           <TouchableOpacity
-            style={[styles.navButton, historyIndex < 0 && styles.navButtonDisabled]}
-            onPress={handlePrevMove}
+            style={[styles.compactButton, historyIndex < 0 && styles.buttonDisabled]}
+            onPress={handlePreviousMove}
             disabled={historyIndex < 0}
           >
-            <Text style={styles.navButtonText}>{'←'}</Text>
+            <Text style={styles.buttonText}>←</Text>
           </TouchableOpacity>
 
-          <Text style={styles.moveCounter}>
-            {moveHistory.length > 0 ? `${historyIndex + 1} / ${moveHistory.length}` : ''}
-          </Text>
+          <TouchableOpacity style={styles.compactButton} onPress={handleRestart}>
+            <Text style={styles.buttonText}>New</Text>
+          </TouchableOpacity>
+
+          {!autoFlip && (
+            <TouchableOpacity style={styles.compactButton} onPress={handleFlipBoard}>
+              <Text style={styles.buttonText}>Flip</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={[
-              styles.navButton,
-              historyIndex >= moveHistory.length - 1 && styles.navButtonDisabled,
+              styles.compactButton,
+              historyIndex >= moveHistory.length - 1 && styles.buttonDisabled,
             ]}
             onPress={handleNextMove}
             disabled={historyIndex >= moveHistory.length - 1}
           >
-            <Text style={styles.navButtonText}>{'→'}</Text>
+            <Text style={styles.buttonText}>→</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity style={styles.button} onPress={handleRestart}>
-          <Text style={styles.buttonText}>New Game</Text>
-        </TouchableOpacity>
-
-        {!autoFlip && (
-          <TouchableOpacity style={styles.button} onPress={handleFlipBoard}>
-            <Text style={styles.buttonText}>Flip</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.info}>
-        <Text style={styles.infoText}>Tap piece, then tap destination</Text>
-        {showBestMove && bestMove && <Text style={styles.bestMoveText}>Best move: {bestMove}</Text>}
+        {bestMove && <Text style={styles.bestMoveText}>Best: {bestMove}</Text>}
       </View>
     </SafeAreaView>
   )
@@ -779,32 +769,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: theme.colors.background.light,
-    paddingHorizontal: theme.spacing.sm,
   },
-  header: {
+  compactHeader: {
     width: '100%',
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    backgroundColor: '#f5f5f5',
   },
   statusText: {
-    fontSize: theme.fontSize.md,
+    fontSize: 12,
     fontWeight: '600',
     color: theme.colors.text.light,
     textAlign: 'center',
+    marginBottom: 2,
+  },
+  materialContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 4,
+  },
+  capturedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    flex: 1,
+  },
+  sideLabel: {
+    fontSize: 12,
+  },
+  capturedList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 1,
+    flex: 1,
+  },
+  capturedPieceCompact: {
+    fontSize: 14,
+    color: '#333',
+  },
+  materialAdvantage: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#2f95dc',
+    marginLeft: 4,
   },
   boardContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   boardWrapper: {
     borderWidth: 2,
     borderColor: '#333',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
   board: {
     flexDirection: 'row',
@@ -825,102 +840,38 @@ const styles = StyleSheet.create({
     height: '30%',
     borderRadius: 100,
   },
-  controls: {
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.sm,
+  compactControls: {
+    width: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     alignItems: 'center',
+    gap: 2,
   },
-  navigationRow: {
+  controlRow: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    alignItems: 'center',
+    gap: 6,
     justifyContent: 'center',
   },
-  navButton: {
+  compactButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.sm,
-    minWidth: 50,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+    borderRadius: 4,
+    minWidth: 45,
   },
-  navButtonDisabled: {
-    backgroundColor: theme.colors.background.dark,
+  buttonDisabled: {
+    backgroundColor: '#ccc',
     opacity: 0.5,
-  },
-  navButtonText: {
-    color: '#ffffff',
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  moveCounter: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text.light,
-    fontWeight: '600',
-    minWidth: 60,
-    textAlign: 'center',
-  },
-  button: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.sm,
-    minWidth: 80,
   },
   buttonText: {
     color: '#ffffff',
-    fontSize: theme.fontSize.sm,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
-  },
-  info: {
-    paddingVertical: theme.spacing.xs,
-    paddingHorizontal: theme.spacing.md,
-  },
-  infoText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.secondary,
-    textAlign: 'center',
-    marginBottom: theme.spacing.xs,
   },
   bestMoveText: {
-    fontSize: theme.fontSize.sm,
-    color: 'rgb(0, 200, 0)',
-    textAlign: 'center',
+    fontSize: 10,
+    color: 'rgb(0, 150, 0)',
     fontWeight: '600',
-  },
-  capturedPiecesContainer: {
-    width: '100%',
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.xs,
-    backgroundColor: theme.colors.background.dark,
-  },
-  capturedPiecesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: theme.spacing.xs,
-  },
-  capturedLabel: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.text.light,
-    fontWeight: '600',
-    marginRight: theme.spacing.sm,
-    width: 115,
-  },
-  capturedPieces: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 2,
-  },
-  capturedPiece: {
-    fontSize: 20,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 2,
-  },
-  noPieces: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.secondary,
-    fontStyle: 'italic',
   },
 })

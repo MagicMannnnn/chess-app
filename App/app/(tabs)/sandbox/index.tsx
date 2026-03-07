@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native'
+import { StyleSheet, Text, View } from 'react-native'
 import Slider from '@react-native-community/slider'
 
 import ChessBoard from '@/components/ChessBoard'
@@ -35,12 +35,12 @@ function EvaluationBar({ score, depth }: { score: number; depth: number }) {
 const evaluationStyles = StyleSheet.create({
   container: {
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 6,
   },
   barContainer: {
-    height: 24,
+    height: 20,
     width: '100%',
     backgroundColor: '#000',
     borderRadius: 4,
@@ -63,7 +63,7 @@ const evaluationStyles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   scoreText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: theme.colors.text.light,
     textAlign: 'center',
@@ -72,11 +72,11 @@ const evaluationStyles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 4,
-    gap: 12,
+    marginTop: 2,
+    gap: 8,
   },
   depthText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
     color: theme.colors.text.light,
     opacity: 0.7,
@@ -86,7 +86,6 @@ const evaluationStyles = StyleSheet.create({
 export default function SandboxScreen() {
   const { settings } = useSettings()
   const [searchDepth, setSearchDepth] = useState(3)
-  const [showBestMove, setShowBestMove] = useState(true)
   const [evaluation, setEvaluation] = useState(0)
   const [evalDepth, setEvalDepth] = useState(0)
 
@@ -96,7 +95,7 @@ export default function SandboxScreen() {
   }, [])
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <View style={styles.container}>
       <EvaluationBar score={evaluation} depth={evalDepth} />
 
       <View style={styles.controls}>
@@ -114,24 +113,14 @@ export default function SandboxScreen() {
             thumbTintColor={theme.colors.primary}
           />
         </View>
-
-        <View style={styles.controlRow}>
-          <Text style={styles.label}>Show Best Move</Text>
-          <TouchableOpacity style={styles.toggle} onPress={() => setShowBestMove(!showBestMove)}>
-            <View style={[styles.toggleInner, showBestMove && styles.toggleActive]}>
-              <Text style={styles.toggleText}>{showBestMove ? 'ON' : 'OFF'}</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
       </View>
 
       <ChessBoard
         autoFlip={settings.autoFlipBoard}
-        showBestMove={showBestMove}
         searchDepth={searchDepth}
         onEvaluationChange={handleEvaluationChange}
       />
-    </ScrollView>
+    </View>
   )
 }
 
@@ -140,50 +129,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background.light,
   },
-  content: {
-    paddingTop: 4,
-    paddingBottom: 8,
-  },
   controls: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-    gap: 8,
-  },
-  controlRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 4,
     gap: 4,
   },
+  controlRow: {
+    gap: 2,
+  },
   label: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: theme.colors.text.primary,
   },
   slider: {
     width: '100%',
-    height: 32,
-  },
-  toggle: {
-    width: 80,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: theme.colors.background.dark,
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-  },
-  toggleInner: {
-    width: 36,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.background.medium,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  toggleActive: {
-    backgroundColor: theme.colors.primary,
-    alignSelf: 'flex-end',
-  },
-  toggleText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
+    height: 28,
   },
 })
