@@ -1,4 +1,5 @@
 #include "ChessEngine.h"
+#include "../v1/Search.h"
 #include <sstream>
 #include <iomanip>
 
@@ -10,6 +11,7 @@ ChessEngine::ChessEngine() {
 
 void ChessEngine::newGame() {
     board_.reset();
+    V1::Search::clearCaches();
 }
 
 bool ChessEngine::loadFromFEN(const std::string& fen) {

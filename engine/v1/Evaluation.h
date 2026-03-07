@@ -17,6 +17,9 @@ public:
     // Evaluate with depth for mate detection
     static int evaluate(const Board& board, int ply);
     
+    // Fast material-only evaluation (for quiescence search)
+    static int evaluateMaterialOnly(const Board& board);
+    
 private:
     // Piece values in centipawns
     static constexpr int PAWN_VALUE = 100;

@@ -140,12 +140,32 @@ int Evaluation::countAttackedSquares(const Board& board, Square from, Color atta
 }
 
 int Evaluation::evaluatePieceActivity(const Board& board, Color color) {
+    // Simplified activity evaluation - just count mobility bonus per piece
+    // Much faster than counting all attacked squares
     int activity = 0;
     
     for (int sq = 0; sq < 64; sq++) {
         Piece piece = board.getPiece(sq);
         if (!piece.isEmpty() && piece.color == color) {
-            activity += countAttackedSquares(board, sq, color);
+            // Simple bonus based on piece type and centralization
+            // instead of expensive square counting
+            int rank = sq / 8;
+            int file = sq % 8;
+            int centerDist = std::abs(rank - 4) + std::abs(file - 4);
+            
+            switch (piece.type) {
+                case PieceType::KNIGHT:
+                case PieceType::BISHOP:
+                    // Knights and bishops benefit from centralization
+                    activity += (8 - centerDist);
+                    break;
+                case PieceType::QUEEN:
+                    // Queen gets small bonus
+                    activity += (8 - centerDist) / 2;
+                    break;
+                default:
+                    break;
+            }
         }
     }
     
@@ -199,25 +219,6 @@ int Evaluation::evaluateKingSafety(const Board& board, Color color) {
     }
     
     safety += pawnShield * KING_SAFETY_WEIGHT;
-    
-    // Count enemy pieces attacking squares near king
-    int attackers = 0;
-    for (int dr = -1; dr <= 1; dr++) {
-        for (int dc = -1; dc <= 1; dc++) {
-            if (dr == 0 && dc == 0) continue;
-            int checkRow = kingRow + dr;
-            int checkCol = kingCol + dc;
-            
-            if (checkRow >= 0 && checkRow < 8 && checkCol >= 0 && checkCol < 8) {
-                Square sq = checkRow * 8 + checkCol;
-                if (board.isSquareAttacked(sq, opponent)) {
-                    attackers++;
-                }
-            }
-        }
-    }
-    
-    safety -= attackers * KING_ATTACK_WEIGHT;
     
     return safety;
 }
@@ -278,6 +279,17 @@ int Evaluation::evaluatePositionBonus(const Board& board, Color color) {
 
 int Evaluation::evaluate(const Board& board) {
     return evaluate(board, 0);
+}
+
+int Evaluation::evaluateMaterialOnly(const Board& board) {
+    Color currentPlayer = board.getCurrentPlayer();
+    Color opponent = oppositeColor(currentPlayer);
+    
+    // Quick material-only evaluation for quiescence search
+    int ourMaterial = evaluateMaterial(board, currentPlayer);
+    int theirMaterial = evaluateMaterial(board, opponent);
+    
+    return ourMaterial - theirMaterial;
 }
 
 int Evaluation::evaluate(const Board& board, int ply) {

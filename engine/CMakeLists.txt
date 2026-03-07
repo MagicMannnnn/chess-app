@@ -16,6 +16,8 @@ set(CORE_SOURCES
     Core/Board.cpp
     Core/Move.cpp
     Core/ChessEngine.cpp
+    v1/Search.cpp
+    v1/Evaluation.cpp
 )
 
 set(CORE_HEADERS
@@ -23,6 +25,8 @@ set(CORE_HEADERS
     Core/Move.h
     Core/ChessEngine.h
     Core/Types.h
+    v1/Search.h
+    v1/Evaluation.h
 )
 
 # For WebAssembly build

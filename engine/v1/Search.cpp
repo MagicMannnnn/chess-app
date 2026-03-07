@@ -9,6 +9,76 @@ namespace V1 {
 // Initialize killer moves array
 std::array<std::array<Move, 2>, Search::MAX_DEPTH> Search::killerMoves = {};
 
+// Initialize transposition table
+std::unordered_map<uint64_t, TTEntry> Search::transpositionTable;
+
+void Search::clearCaches() {
+    transpositionTable.clear();
+    killerMoves = {};
+}
+
+// Simple Zobrist-like hash for board positions
+uint64_t Search::computeZobristKey(const Board& board) {
+    uint64_t key = 0;
+    
+    for (int sq = 0; sq < 64; sq++) {
+        Piece piece = board.getPiece(sq);
+        if (!piece.isEmpty()) {
+            // Simple hash: piece type * color * square
+            uint64_t pieceHash = (static_cast<uint64_t>(piece.type) + 1) * 13 +
+                                 (static_cast<uint64_t>(piece.color) + 1) * 7;
+            key ^= (pieceHash * (sq + 1) * 31);
+        }
+    }
+    
+    // Include current player
+    key ^= (board.getCurrentPlayer() == Color::WHITE) ? 0x123456789ABCDEF0ULL : 0x0FEDCBA987654321ULL;
+    
+    return key;
+}
+
+bool Search::probeTranspositionTable(uint64_t key, int depth, int alpha, int beta, TTEntry& entry) {
+    auto it = transpositionTable.find(key);
+    if (it == transpositionTable.end()) {
+        return false;
+    }
+    
+    entry = it->second;
+    
+    // Only use entry if it was searched to at least the same depth
+    if (entry.depth < depth) {
+        return false;
+    }
+    
+    // Check if we can use this score
+    if (entry.flag == TTEntry::EXACT) {
+        return true;
+    } else if (entry.flag == TTEntry::LOWER_BOUND && entry.score >= beta) {
+        return true;
+    } else if (entry.flag == TTEntry::UPPER_BOUND && entry.score <= alpha) {
+        return true;
+    }
+    
+    return false;
+}
+
+void Search::storeTranspositionTable(uint64_t key, int score, int depth, TTEntry::Flag flag, const Move& bestMove) {
+    // Limit table size
+    if (transpositionTable.size() >= MAX_TT_SIZE && transpositionTable.find(key) == transpositionTable.end()) {
+        // Table full and this is a new entry - skip it
+        return;
+    }
+    
+    TTEntry entry;
+    entry.zobristKey = key;
+    entry.score = score;
+    entry.depth = depth;
+    entry.flag = flag;
+    entry.bestMove = bestMove;
+    
+    transpositionTable[key] = entry;
+}
+
 int Search::getPieceValue(PieceType type) {
     switch (type) {
         case PieceType::PAWN:   return 100;
@@ -21,8 +91,13 @@ int Search::getPieceValue(PieceType type) {
     }
 }
 
-int Search::getMoveScore(const Board& board, const Move& move, int ply) {
+int Search::getMoveScore(const Board& board, const Move& move, int ply, const Move& ttMove) {
     int score = 0;
+    
+    // Transposition table move gets highest priority
+    if (ttMove.isValid() && move == ttMove) {
+        return 1000000;
+    }
     
     // MVV-LVA: Most Valuable Victim - Least Valuable Attacker
     if (move.isCapture()) {
@@ -49,13 +124,13 @@ int Search::getMoveScore(const Board& board, const Move& move, int ply) {
     return score;
 }
 
-void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
+void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply, const Move& ttMove) {
     // Score and sort moves
     std::vector<std::pair<int, Move>> scoredMoves;
     scoredMoves.reserve(moves.size());
     
     for (const Move& move : moves) {
-        int score = getMoveScore(board, move, ply);
+        int score = getMoveScore(board, move, ply, ttMove);
         scoredMoves.emplace_back(score, move);
     }
     
@@ -69,34 +144,146 @@ void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
     }
 }
 
+int Search::quiescence(Board& board, int alpha, int beta, int& nodesSearched, int ply) {
+    nodesSearched++;
+    
+    // Limit quiescence depth to prevent explosion
+    const int MAX_QUIESCENCE_DEPTH = 8;
+    if (ply >= MAX_QUIESCENCE_DEPTH) {
+        return Evaluation::evaluateMaterialOnly(board);
+    }
+    
+    // Stand pat score - use fast material-only evaluation
+    int standPat = Evaluation::evaluateMaterialOnly(board);
+    
+    // Beta cutoff
+    if (standPat >= beta) {
+        return beta;
+    }
+    
+    // Update alpha
+    if (standPat > alpha) {
+        alpha = standPat;
+    }
+    
+    // Generate and search only captures
+    std::vector<Move> captures;
+    std::vector<Move> allMoves = board.generateLegalMoves();
+    
+    for (const Move& move : allMoves) {
+        if (move.isCapture()) {
+            captures.push_back(move);
+        }
+    }
+    
+    // If no captures, return stand pat
+    if (captures.empty()) {
+        return standPat;
+    }
+    
+    // Order captures by MVV-LVA
+    Move emptyMove;
+    orderMoves(board, captures, ply, emptyMove);
+    
+    // Delta pruning - if we're so far behind that even capturing queen won't help, prune
+    const int QUEEN_VALUE = 900;
+    const int DELTA_MARGIN = QUEEN_VALUE + 200; // Queen value + safety margin
+    if (standPat + DELTA_MARGIN < alpha) {
+        // Even capturing the most valuable piece won't improve alpha
+        return alpha;
+    }
+    
+    // Search captures
+    for (const Move& move : captures) {
+        board.makeMove(move);
+        int score = -quiescence(board, -beta, -alpha, nodesSearched, ply + 1);
+        board.unmakeMove();
+        
+        if (score >= beta) {
+            return beta;
+        }
+        
+        if (score > alpha) {
+            alpha = score;
+        }
+    }
+    
+    return alpha;
+}
+
 int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizing, int& nodesSearched, int ply) {
     nodesSearched++;
     
-    // Terminal node
-    if (depth == 0 || board.isCheckmate() || board.isStalemate() || board.isDraw()) {
-        return Evaluation::evaluate(board, ply);
+    // Compute position key for transposition table
+    uint64_t positionKey = computeZobristKey(board);
+    
+    // Probe transposition table
+    TTEntry ttEntry;
+    if (probeTranspositionTable(positionKey, depth, alpha, beta, ttEntry)) {
+        return ttEntry.score;
+    }
+    
+    // Terminal node or depth reached - use quiescence search
+    if (depth == 0) {
+        int score = quiescence(board, alpha, beta, nodesSearched, ply);
+        storeTranspositionTable(positionKey, score, 0, TTEntry::EXACT, Move());
+        return score;
+    }
+    
+    // Check for game over
+    if (board.isCheckmate() || board.isStalemate() || board.isDraw()) {
+        int score = Evaluation::evaluate(board, ply);
+        storeTranspositionTable(positionKey, score, depth, TTEntry::EXACT, Move());
+        return score;
     }
     
     std::vector<Move> moves = board.generateLegalMoves();
     
     if (moves.empty()) {
         // No legal moves - either checkmate or stalemate
-        return Evaluation::evaluate(board, ply);
+        int score = Evaluation::evaluate(board, ply);
+        storeTranspositionTable(positionKey, score, depth, TTEntry::EXACT, Move());
+        return score;
     }
     
     // Order moves for better pruning
-    orderMoves(board, moves, ply);
+    orderMoves(board, moves, ply, ttEntry.bestMove);
     
     if (maximizing) {
         int maxEval = -INFINITY_SCORE;
+        Move bestMove;
+        TTEntry::Flag flag = TTEntry::UPPER_BOUND;
+        int moveCount = 0;
         
         for (const Move& move : moves) {
+            moveCount++;
+            
             board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1);
+            int eval;
+            
+            // Late move reductions - search less promising moves at reduced depth
+            // Only apply after we've searched a few moves and at sufficient depth
+            bool doLMR = moveCount > 4 && depth >= 3 && !move.isCapture() && 
+                         !board.isInCheck(board.getCurrentPlayer()) && !move.isPromotion();
+            
+            if (doLMR) {
+                // Search at reduced depth first
+                eval = minimax(board, depth - 2, alpha, beta, false, nodesSearched, ply + 1);
+                
+                // If it looks good, re-search at full depth
+                if (eval > alpha) {
+                    eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1);
+                }
+            } else {
+                // Normal search
+                eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1);
+            }
+            
             board.unmakeMove();
             
             if (eval > maxEval) {
                 maxEval = eval;
+                bestMove = move;
                 
                 // Store killer move if it caused a cutoff and isn't a capture
                 if (eval >= beta && !move.isCapture() && ply < MAX_DEPTH) {
@@ -111,21 +298,52 @@ int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizin
             alpha = std::max(alpha, eval);
             
             if (beta <= alpha) {
+                flag = TTEntry::LOWER_BOUND;
                 break; // Beta cutoff
             }
         }
         
+        // Determine flag for TT entry
+        if (maxEval > alpha) {
+            flag = TTEntry::EXACT;
+        }
+        
+        storeTranspositionTable(positionKey, maxEval, depth, flag, bestMove);
         return maxEval;
     } else {
         int minEval = INFINITY_SCORE;
+        Move bestMove;
+        TTEntry::Flag flag = TTEntry::UPPER_BOUND;
+        int moveCount = 0;
         
         for (const Move& move : moves) {
+            moveCount++;
+            
             board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1);
+            int eval;
+            
+            // Late move reductions
+            bool doLMR = moveCount > 4 && depth >= 3 && !move.isCapture() && 
+                         !board.isInCheck(board.getCurrentPlayer()) && !move.isPromotion();
+            
+            if (doLMR) {
+                // Search at reduced depth first
+                eval = minimax(board, depth - 2, alpha, beta, true, nodesSearched, ply + 1);
+                
+                // If it looks good, re-search at full depth
+                if (eval < beta) {
+                    eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1);
+                }
+            } else {
+                // Normal search
+                eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1);
+            }
+            
             board.unmakeMove();
             
             if (eval < minEval) {
                 minEval = eval;
+                bestMove = move;
                 
                 // Store killer move if it caused a cutoff and isn't a capture
                 if (eval <= alpha && !move.isCapture() && ply < MAX_DEPTH) {
@@ -140,10 +358,17 @@ int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizin
             beta = std::min(beta, eval);
             
             if (beta <= alpha) {
+                flag = TTEntry::LOWER_BOUND;
                 break; // Alpha cutoff
             }
         }
         
+        // Determine flag for TT entry
+        if (minEval < beta) {
+            flag = TTEntry::EXACT;
+        }
+        
+        storeTranspositionTable(positionKey, minEval, depth, flag, bestMove);
         return minEval;
     }
 }
@@ -173,33 +398,63 @@ SearchResult Search::findBestMove(
         int bestScore = -INFINITY_SCORE;
         Move bestMove;
         
-        int alpha = -INFINITY_SCORE;
-        int beta = INFINITY_SCORE;
-        
-        // Order moves at root (use previous iteration's best move first)
-        if (currentDepth > 1 && finalResult.bestMove.isValid()) {
-            // Move the previous best move to the front
-            auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
-            if (it != legalMoves.end()) {
-                std::rotate(legalMoves.begin(), it, it + 1);
-            }
+        // Aspiration windows - use narrower search window based on previous score
+        int alpha, beta;
+        if (currentDepth >= 3 && finalResult.bestMove.isValid()) {
+            // Use narrow window around previous score
+            const int ASPIRATION_WINDOW = 50;
+            alpha = finalResult.score - ASPIRATION_WINDOW;
+            beta = finalResult.score + ASPIRATION_WINDOW;
         } else {
-            // First iteration - order moves
-            orderMoves(board, legalMoves, 0);
+            alpha = -INFINITY_SCORE;
+            beta = INFINITY_SCORE;
         }
         
-        for (const Move& move : legalMoves) {
-            board.makeMove(move);
-            int score = minimax(board, currentDepth - 1, alpha, beta, false, result.nodesSearched, 1);
-            board.unmakeMove();
+        // Aspiration window re-search loop
+        bool needResearch = false;
+        do {
+            bestScore = -INFINITY_SCORE;
+            needResearch = false;
             
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
+            // Order moves at root (use previous iteration's best move first)
+            Move emptyMove;
+            if (currentDepth > 1 && finalResult.bestMove.isValid()) {
+                // Move the previous best move to the front
+                auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
+                if (it != legalMoves.end()) {
+                    std::rotate(legalMoves.begin(), it, it + 1);
+                }
+            } else {
+                // First iteration - order moves
+                orderMoves(board, legalMoves, 0, emptyMove);
             }
             
-            alpha = std::max(alpha, score);
-        }
+            for (const Move& move : legalMoves) {
+                board.makeMove(move);
+                int score = minimax(board, currentDepth - 1, alpha, beta, false, result.nodesSearched, 1);
+                board.unmakeMove();
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+                
+                alpha = std::max(alpha, score);
+            }
+            
+            // Check if we need to re-search with wider window
+            if (currentDepth >= 3 && finalResult.bestMove.isValid()) {
+                if (bestScore <= alpha - (currentDepth >= 3 ? 50 : 0)) {
+                    // Score dropped below window - widen downward
+                    alpha = -INFINITY_SCORE;
+                    needResearch = true;
+                } else if (bestScore >= beta) {
+                    // Score rose above window - widen upward
+                    beta = INFINITY_SCORE;
+                    needResearch = true;
+                }
+            }
+        } while (needResearch);
         
         result.bestMove = bestMove;
         result.score = bestScore;
