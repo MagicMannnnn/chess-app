@@ -37,6 +37,7 @@ interface ChessBoardProps {
   autoFlip?: boolean
   showBestMove?: boolean
   searchDepth?: number
+  onEvaluationChange?: (evaluation: number, depth: number) => void
 }
 
 export default function ChessBoard({
@@ -44,6 +45,7 @@ export default function ChessBoard({
   autoFlip = false,
   showBestMove = false,
   searchDepth = 3,
+  onEvaluationChange,
 }: ChessBoardProps) {
   const [engine] = useState(() => {
     console.log('ChessBoard: Creating ChessEngine instance')
@@ -71,6 +73,7 @@ export default function ChessBoard({
   const boardRef = useRef<View>(null)
   const boardWrapperRef = useRef<View>(null)
   const boardLayoutRef = useRef({ x: 0, y: 0, width: 0, height: 0 })
+  const onEvaluationChangeRef = useRef(onEvaluationChange)
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
   // Use 90% of screen width or 90% of available height (minus space for status/controls), whichever is smaller
   const maxBoardSize = Math.min(screenWidth * 0.9, (screenHeight - 250) * 0.9)
@@ -96,6 +99,11 @@ export default function ChessBoard({
     setIsFlipped(flipped)
   }, [flipped])
 
+  // Keep evaluation callback ref up to date
+  useEffect(() => {
+    onEvaluationChangeRef.current = onEvaluationChange
+  }, [onEvaluationChange])
+
   const updateGameState = () => {
     try {
       console.log('ChessBoard: updateGameState - getting board')
@@ -109,9 +117,10 @@ export default function ChessBoard({
       )
       setBoard(newBoard)
       console.log('ChessBoard: updateGameState - getting current player')
-      setCurrentPlayer(engine.getCurrentPlayer())
+      const player = engine.getCurrentPlayer()
+      setCurrentPlayer(player)
 
-      let status = `${engine.getCurrentPlayer() === Color.WHITE ? 'White' : 'Black'} to move`
+      let status = `${player === Color.WHITE ? 'White' : 'Black'} to move`
 
       console.log('ChessBoard: updateGameState - checking game state')
       if (engine.isInCheck()) {
@@ -119,7 +128,7 @@ export default function ChessBoard({
       }
 
       if (engine.isCheckmate()) {
-        status = `Checkmate! ${engine.getCurrentPlayer() === Color.WHITE ? 'Black' : 'White'} wins!`
+        status = `Checkmate! ${player === Color.WHITE ? 'Black' : 'White'} wins!`
       } else if (engine.isStalemate()) {
         status = 'Stalemate! Draw.'
       }
@@ -130,6 +139,15 @@ export default function ChessBoard({
       const history = engine.getMoveHistory()
       setMoveHistory(history)
       setHistoryIndex(history.length - 1)
+
+      // Get evaluation and notify parent (from white's perspective)
+      const evalCallback = onEvaluationChangeRef.current
+      if (evalCallback) {
+        const evaluation = engine.evaluatePosition()
+        // Convert to white's perspective: if black to move, negate the score
+        const whiteEvaluation = player === Color.BLACK ? -evaluation : evaluation
+        evalCallback(whiteEvaluation, 0)
+      }
 
       console.log('ChessBoard: updateGameState - complete')
     } catch (error) {
@@ -147,6 +165,8 @@ export default function ChessBoard({
 
     let cancelled = false
     let currentDepth = 1
+    // Cache current player to avoid repeated calls during search
+    const playerColor = currentPlayer
 
     // Recursive function to compute one depth at a time
     const computeNextDepth = async () => {
@@ -157,6 +177,14 @@ export default function ChessBoard({
         const move = await engine.getBestMove(currentDepth)
         if (!cancelled) {
           setBestMove(move)
+
+          // Update evaluation at this depth (from white's perspective)
+          const evalCallback = onEvaluationChangeRef.current
+          if (evalCallback) {
+            const evaluation = engine.evaluatePosition()
+            const whiteEvaluation = playerColor === Color.BLACK ? -evaluation : evaluation
+            evalCallback(whiteEvaluation, currentDepth)
+          }
         }
       } catch (error) {
         console.error(`ChessBoard: getBestMove(${currentDepth}) failed:`, error)
@@ -699,7 +727,7 @@ const styles = StyleSheet.create({
     minWidth: 50,
   },
   navButtonDisabled: {
-    backgroundColor: theme.colors.background.medium,
+    backgroundColor: theme.colors.background.dark,
     opacity: 0.5,
   },
   navButtonText: {
@@ -710,7 +738,7 @@ const styles = StyleSheet.create({
   },
   moveCounter: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.text.primary,
+    color: theme.colors.text.light,
     fontWeight: '600',
     minWidth: 60,
     textAlign: 'center',

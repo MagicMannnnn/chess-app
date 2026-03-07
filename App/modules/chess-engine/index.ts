@@ -100,6 +100,10 @@ export class ChessEngine {
   canUndo(): boolean {
     return ChessEngineModule.canUndo()
   }
+
+  evaluatePosition(): number {
+    return ChessEngineModule.evaluatePosition()
+  }
 }
 
 export default ChessEngine

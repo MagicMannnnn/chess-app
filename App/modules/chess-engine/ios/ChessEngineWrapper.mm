@@ -290,4 +290,12 @@ using namespace Chess;
     return _engine->canUndo();
 }
 
+- (int)evaluatePosition {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in evaluatePosition");
+        return 0;
+    }
+    return _engine->evaluatePosition();
+}
+
 @end

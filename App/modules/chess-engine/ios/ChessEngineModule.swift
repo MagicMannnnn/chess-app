@@ -200,6 +200,15 @@ public class ChessEngineModule: Module {
       }
       return engine.canUndo()
     }
+    
+    Function("evaluatePosition") { () -> Int in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in evaluatePosition")
+        return 0
+      }
+      return Int(engine.evaluatePosition())
+    }
   }
   
   private func ensureInitialized() {

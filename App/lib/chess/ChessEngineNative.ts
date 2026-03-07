@@ -232,6 +232,16 @@ export class ChessEngine {
       return false
     }
   }
+
+  evaluatePosition(): number {
+    try {
+      if (!this.ensureInitialized()) return 0
+      return this.nativeEngine!.evaluatePosition()
+    } catch (error) {
+      console.error('ChessEngine: evaluatePosition failed:', error)
+      return 0
+    }
+  }
 }
 
 export { Color, type Piece, PieceType } from './types'

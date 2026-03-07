@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)getBestMove:(int)depth;
 - (NSArray<NSString *> *)getMoveHistory;
 - (BOOL)canUndo;
+- (int)evaluatePosition;
 
 @end
 
