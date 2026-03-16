@@ -2,6 +2,7 @@ import React, { createContext, ReactNode, useContext, useState } from 'react'
 
 interface AppSettings {
   autoFlipBoard: boolean
+  aiVersion: 'v1' | 'v2'
 }
 
 interface SettingsContextType {
@@ -11,6 +12,7 @@ interface SettingsContextType {
 
 const defaultSettings: AppSettings = {
   autoFlipBoard: false,
+  aiVersion: 'v1',
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined)

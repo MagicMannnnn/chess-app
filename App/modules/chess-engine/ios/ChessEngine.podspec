@@ -14,13 +14,13 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
 
   # iOS wrapper files and C++ engine source files (symlinked into ios directory)
-  s.source_files = "*.{h,m,mm,swift,cpp}", "v1/**/*.{h,cpp}"
+  s.source_files = "*.{h,m,mm,swift,cpp}", "v1/**/*.{h,cpp}", "v2/**/*.{h,cpp}"
   
   # Only expose the Objective-C++ wrapper header, not the C++ headers
   s.public_header_files = "ChessEngineWrapper.h"
   
   # C++ headers should be private (for internal use only)
-  s.private_header_files = "ChessEngine.h", "Board.h", "Move.h", "Types.h", "v1/Evaluation.h", "v1/Search.h"
+  s.private_header_files = "ChessEngine.h", "Board.h", "Move.h", "Types.h", "v1/Evaluation.h", "v1/Search.h", "v2/Evaluation.h", "v2/Search.h"
   
   # Compiler settings - make sure to compile as C++
   s.compiler_flags = '-std=c++17'
@@ -29,8 +29,8 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++',
-    'HEADER_SEARCH_PATHS' => '$(inherited) $(PODS_TARGET_SRCROOT)/../cpp/engine',
-    'USER_HEADER_SEARCH_PATHS' => '$(inherited) $(PODS_TARGET_SRCROOT)/../cpp/engine',
+    'HEADER_SEARCH_PATHS' => '$(inherited) $(PODS_TARGET_SRCROOT)',
+    'USER_HEADER_SEARCH_PATHS' => '$(inherited) $(PODS_TARGET_SRCROOT)',
     'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited)',
     'OTHER_LDFLAGS' => '$(inherited) -lc++',
     'OTHER_CPLUSPLUSFLAGS' => '$(OTHER_CFLAGS) -std=c++17'

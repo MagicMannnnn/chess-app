@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { theme } from '@/constants/theme'
+import { useSettings } from '@/contexts/SettingsContext'
 import { ChessEngine, Color, Piece, PieceType } from '@/lib/chess'
 
 const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
@@ -72,6 +73,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     },
     ref,
   ) => {
+    const { settings } = useSettings()
     const [engine] = useState(() => {
       console.log('ChessBoard: Creating ChessEngine instance')
       try {
@@ -348,7 +350,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             }
 
             // Get best move at current depth (no per-depth time limit)
-            const move = await engine.getBestMove(depth, 0)
+            const move = await engine.getBestMove(depth, 0, settings.aiVersion)
 
             if (cancelled) break
 
@@ -383,7 +385,9 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           }
 
           if (!cancelled) {
-            console.log(`ChessBoard: Search complete, final best move: ${currentBestMove}`)
+            console.log(
+              `ChessBoard: ${settings.aiVersion} Search complete, final best move: ${currentBestMove}`,
+            )
             setSearchComplete(true)
           }
         } catch (error) {

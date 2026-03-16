@@ -261,12 +261,13 @@ using namespace Chess;
     return _engine->loadFromFEN(fenStr);
 }
 
-- (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs {
+- (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion {
     if (!_engine) {
         NSLog(@"ChessEngineWrapper: Engine is null in getBestMove");
         return @"";
     }
-    std::string bestMove = _engine->getBestMove(depth, maxTimeMs);
+    std::string versionStr = aiVersion ? [aiVersion UTF8String] : "v1";
+    std::string bestMove = _engine->getBestMove(depth, maxTimeMs, versionStr);
     return [NSString stringWithUTF8String:bestMove.c_str()];
 }
 

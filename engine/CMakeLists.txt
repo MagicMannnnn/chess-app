@@ -18,6 +18,8 @@ set(CORE_SOURCES
     Core/ChessEngine.cpp
     v1/Search.cpp
     v1/Evaluation.cpp
+    v2/Search.cpp
+    v2/Evaluation.cpp
 )
 
 set(CORE_HEADERS
@@ -27,6 +29,8 @@ set(CORE_HEADERS
     Core/Types.h
     v1/Search.h
     v1/Evaluation.h
+    v2/Search.h
+    v2/Evaluation.h
 )
 
 # For WebAssembly build
