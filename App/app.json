@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.gterry.chess-app"
+      "bundleIdentifier": "com.gterry.chessapp"
     },
     "android": {
       "adaptiveIcon": {
