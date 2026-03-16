@@ -44,6 +44,7 @@ interface ChessBoardProps {
   searchDepth?: number
   maxSearchTime?: number // milliseconds
   isAIEnabled?: boolean
+  aiVersion?: 'v1' | 'v2'
   hideBestMove?: boolean
   useChessClock?: boolean
   clockTimeMinutes?: number
@@ -62,6 +63,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
       searchDepth = 3,
       maxSearchTime,
       isAIEnabled = false,
+      aiVersion,
       hideBestMove = false,
       useChessClock: _useChessClock = false,
       clockTimeMinutes: _clockTimeMinutes = 10,
@@ -349,8 +351,19 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
               break
             }
 
-            // Get best move at current depth (no per-depth time limit)
-            const move = await engine.getBestMove(depth, 0, settings.aiVersion)
+            // Calculate remaining time budget for this depth search
+            const remainingTime = maxSearchTime ? maxSearchTime - (Date.now() - startTime) : 0
+            if (maxSearchTime && remainingTime <= 0) {
+              console.log(`ChessBoard: No time remaining before depth ${depth}`)
+              break
+            }
+
+            // Get best move at current depth with remaining time budget
+            const move = await engine.getBestMove(
+              depth,
+              remainingTime,
+              aiVersion || settings.aiVersion,
+            )
 
             if (cancelled) break
 

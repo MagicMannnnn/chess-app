@@ -1,14 +1,18 @@
 import Slider from '@react-native-community/slider'
+import { Picker } from '@react-native-picker/picker'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
+import { useSettings } from '@/contexts/SettingsContext'
 
 type PlayerType = 'human' | 'ai'
+type AIVersion = 'v1' | 'v2'
 
 export default function GameSetupScreen() {
   const router = useRouter()
+  const { settings } = useSettings()
 
   // Player configurations
   const [whitePlayerType, setWhitePlayerType] = useState<PlayerType>('human')
@@ -17,10 +21,12 @@ export default function GameSetupScreen() {
   // AI settings for White
   const [whiteMaxAITime, setWhiteMaxAITime] = useState(5)
   const [whiteMaxDepth, setWhiteMaxDepth] = useState(5)
+  const [whiteAIVersion, setWhiteAIVersion] = useState<AIVersion>(settings.aiVersion)
 
   // AI settings for Black
   const [blackMaxAITime, setBlackMaxAITime] = useState(5)
   const [blackMaxDepth, setBlackMaxDepth] = useState(5)
+  const [blackAIVersion, setBlackAIVersion] = useState<AIVersion>(settings.aiVersion)
 
   // Chess clock settings
   const [useChessClock, setUseChessClock] = useState(false)
@@ -34,8 +40,10 @@ export default function GameSetupScreen() {
         blackPlayerType,
         whiteMaxAITime: whiteMaxAITime.toString(),
         whiteMaxDepth: whiteMaxDepth.toString(),
+        whiteAIVersion,
         blackMaxAITime: blackMaxAITime.toString(),
         blackMaxDepth: blackMaxDepth.toString(),
+        blackAIVersion,
         useChessClock: useChessClock.toString(),
         clockTimeMinutes: clockTimeMinutes.toString(),
       },
@@ -100,6 +108,19 @@ export default function GameSetupScreen() {
                     thumbTintColor={theme.colors.primary}
                   />
                 </View>
+
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>AI Engine Version</Text>
+                  <Text style={styles.settingDescription}>v1 = balanced, v2 = material-first</Text>
+                  <Picker
+                    selectedValue={whiteAIVersion}
+                    onValueChange={(value) => setWhiteAIVersion(value as AIVersion)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="v1 (Balanced)" value="v1" />
+                    <Picker.Item label="v2 (Material-First)" value="v2" />
+                  </Picker>
+                </View>
               </View>
             )}
           </View>
@@ -154,6 +175,19 @@ export default function GameSetupScreen() {
                     maximumTrackTintColor={theme.colors.background.dark}
                     thumbTintColor={theme.colors.primary}
                   />
+                </View>
+
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>AI Engine Version</Text>
+                  <Text style={styles.settingDescription}>v1 = balanced, v2 = material-first</Text>
+                  <Picker
+                    selectedValue={blackAIVersion}
+                    onValueChange={(value) => setBlackAIVersion(value as AIVersion)}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="v1 (Balanced)" value="v1" />
+                    <Picker.Item label="v2 (Material-First)" value="v2" />
+                  </Picker>
                 </View>
               </View>
             )}
@@ -277,6 +311,12 @@ const styles = StyleSheet.create({
   slider: {
     width: '100%',
     height: 40,
+  },
+  picker: {
+    width: '100%',
+    backgroundColor: theme.colors.background.light,
+    borderRadius: 8,
+    marginTop: 4,
   },
   startButton: {
     backgroundColor: theme.colors.primary,

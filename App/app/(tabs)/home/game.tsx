@@ -18,8 +18,10 @@ export default function GameScreen() {
 
   const whiteMaxAITime = parseInt(params.whiteMaxAITime as string, 10) || 5
   const whiteMaxDepth = parseInt(params.whiteMaxDepth as string, 10) || 5
+  const whiteAIVersion = (params.whiteAIVersion as 'v1' | 'v2') || settings.aiVersion
   const blackMaxAITime = parseInt(params.blackMaxAITime as string, 10) || 5
   const blackMaxDepth = parseInt(params.blackMaxDepth as string, 10) || 5
+  const blackAIVersion = (params.blackAIVersion as 'v1' | 'v2') || settings.aiVersion
 
   const useChessClock = params.useChessClock === 'true'
   const clockTimeMinutes = parseInt(params.clockTimeMinutes as string, 10) || 10
@@ -97,6 +99,7 @@ export default function GameScreen() {
   // Get AI settings for current player
   const currentMaxAITime = currentPlayer === Color.WHITE ? whiteMaxAITime : blackMaxAITime
   const currentMaxDepth = currentPlayer === Color.WHITE ? whiteMaxDepth : blackMaxDepth
+  const currentAIVersion = currentPlayer === Color.WHITE ? whiteAIVersion : blackAIVersion
 
   return (
     <View style={styles.container}>
@@ -147,6 +150,7 @@ export default function GameScreen() {
         searchDepth={currentMaxDepth}
         maxSearchTime={currentMaxAITime * 1000}
         isAIEnabled={isAITurn && !gameOver}
+        aiVersion={currentAIVersion}
         onCurrentPlayerChange={handleCurrentPlayerChange}
         hideBestMove
         useChessClock={useChessClock}
