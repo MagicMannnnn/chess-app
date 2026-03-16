@@ -94,6 +94,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
     const [bestMove, setBestMove] = useState<string>('')
     const [searchComplete, setSearchComplete] = useState(false)
+    const [lastMoveFrom, setLastMoveFrom] = useState<number | null>(null)
+    const [lastMoveTo, setLastMoveTo] = useState<number | null>(null)
     const [capturedPieces, setCapturedPieces] = useState<{
       white: Piece[]
       black: Piece[]
@@ -262,6 +264,23 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         const player = engine.getCurrentPlayer()
         setCurrentPlayer(player)
 
+        // Update last move highlighting
+        const history = engine.getMoveHistory()
+        if (history.length > 0) {
+          const lastMove = history[history.length - 1]
+          // Parse move notation (e.g., "e2e4" or "e7e8q")
+          const fromCol = lastMove.charCodeAt(0) - 'a'.charCodeAt(0)
+          const fromRow = parseInt(lastMove[1]) - 1
+          const toCol = lastMove.charCodeAt(2) - 'a'.charCodeAt(0)
+          const toRow = parseInt(lastMove[3]) - 1
+
+          setLastMoveFrom(fromRow * 8 + fromCol)
+          setLastMoveTo(toRow * 8 + toCol)
+        } else {
+          setLastMoveFrom(null)
+          setLastMoveTo(null)
+        }
+
         // Notify parent of player change
         const playerCallback = onCurrentPlayerChangeRef.current
         if (playerCallback) {
@@ -299,7 +318,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     }
 
     // Compute best move when game state changes
-    // The C++ engine handles iterative deepening internally
+    // Implement iterative deepening: start at depth 1, then 2, 3... up to searchDepth
     useEffect(() => {
       if (engine.isCheckmate() || engine.isStalemate()) {
         setBestMove('')
@@ -312,32 +331,59 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
 
       let cancelled = false
       const playerColor = currentPlayer
+      const startTime = Date.now()
 
-      const computeBestMove = async () => {
+      const computeBestMoveIterative = async () => {
         try {
-          // Call getBestMove with time limit - C++ engine handles iterative deepening
-          // and will return as soon as maxSearchTime is reached
-          const move = await engine.getBestMove(searchDepth, maxSearchTime || 0)
+          let currentBestMove = ''
 
-          if (!cancelled && move) {
-            setBestMove(move)
+          // Iterative deepening: search from depth 1 to searchDepth
+          for (let depth = 1; depth <= searchDepth; depth++) {
+            if (cancelled) break
 
-            // Notify parent of best move change
-            const moveCallback = onBestMoveChangeRef.current
-            if (moveCallback) {
-              moveCallback(move)
+            // Check if we've exceeded the time limit before starting this depth
+            if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
+              console.log(`ChessBoard: Time limit reached before depth ${depth}`)
+              break
             }
 
-            // Update evaluation (from white's perspective)
-            const evalCallback = onEvaluationChangeRef.current
-            if (evalCallback) {
-              const evaluation = engine.evaluatePosition()
-              const whiteEvaluation = playerColor === Color.BLACK ? -evaluation : evaluation
-              evalCallback(whiteEvaluation, searchDepth)
+            // Get best move at current depth (no per-depth time limit)
+            const move = await engine.getBestMove(depth, 0)
+
+            if (cancelled) break
+
+            if (move) {
+              currentBestMove = move
+              setBestMove(move)
+
+              // Notify parent of best move change
+              const moveCallback = onBestMoveChangeRef.current
+              if (moveCallback) {
+                moveCallback(move)
+              }
+
+              // Update evaluation (from white's perspective)
+              const evalCallback = onEvaluationChangeRef.current
+              if (evalCallback) {
+                const evaluation = engine.evaluatePosition()
+                const whiteEvaluation = playerColor === Color.BLACK ? -evaluation : evaluation
+                evalCallback(whiteEvaluation, depth)
+              }
+
+              console.log(
+                `ChessBoard: Depth ${depth} complete, best move: ${move}, time elapsed: ${Date.now() - startTime}ms`,
+              )
+            }
+
+            // Check if we've exceeded the time limit after completing this depth
+            if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
+              console.log(`ChessBoard: Time limit reached after depth ${depth}`)
+              break
             }
           }
 
           if (!cancelled) {
+            console.log(`ChessBoard: Search complete, final best move: ${currentBestMove}`)
             setSearchComplete(true)
           }
         } catch (error) {
@@ -349,13 +395,13 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
       }
 
       // Start computing after a short delay
-      const timer = setTimeout(computeBestMove, 50)
+      const timer = setTimeout(computeBestMoveIterative, 50)
 
       return () => {
         cancelled = true
         clearTimeout(timer)
       }
-    }, [board, searchDepth, maxSearchTime, engine])
+    }, [board, searchDepth, maxSearchTime, engine, currentPlayer])
 
     // Auto-play AI moves when enabled
     useEffect(() => {
@@ -368,6 +414,9 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
       ) {
         return
       }
+
+      // Use shorter delay when there's a time limit (for responsive gameplay)
+      const delay = maxSearchTime ? 100 : 500
 
       // Wait a brief moment before making the AI move (for better UX)
       const timer = setTimeout(() => {
@@ -382,10 +431,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         } catch (error) {
           console.error('ChessBoard: AI move failed:', error)
         }
-      }, 500)
+      }, delay)
 
       return () => clearTimeout(timer)
-    }, [isAIEnabled, bestMove, searchComplete, engine, autoFlip, isFlipped])
+    }, [isAIEnabled, bestMove, searchComplete, engine, autoFlip, isFlipped, maxSearchTime])
 
     const handleSquarePress = (square: number) => {
       const piece = board[square]
@@ -560,6 +609,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
       const isSelected = selectedSquare === square
       const isLegal = isSquareLegalMove(square)
       const isHovered = hoveredSquare === square
+      const isLastMoveFrom = lastMoveFrom === square
+      const isLastMoveTo = lastMoveTo === square
 
       const piece = board[square]
       const isDragging = draggingSquare === square
@@ -585,6 +636,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           ]}
           onPress={() => handleSquarePress(square)}
         >
+          {isLastMoveFrom && (
+            <View style={[styles.lastMoveHighlight, styles.lastMoveFromHighlight]} />
+          )}
+          {isLastMoveTo && <View style={[styles.lastMoveHighlight, styles.lastMoveToHighlight]} />}
           {isLegal && (
             <View style={[styles.legalMoveIndicator, { backgroundColor: '#00000040' }]} />
           )}
@@ -888,6 +943,19 @@ const styles = StyleSheet.create({
     width: '30%',
     height: '30%',
     borderRadius: 100,
+  },
+  lastMoveHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  lastMoveFromHighlight: {
+    backgroundColor: 'rgba(255, 255, 0, 0.3)',
+  },
+  lastMoveToHighlight: {
+    backgroundColor: 'rgba(255, 255, 0, 0.5)',
   },
   compactControls: {
     width: '100%',
