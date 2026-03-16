@@ -168,7 +168,7 @@ public class ChessEngineModule: Module {
       return engine.load(fromFEN: fen)
     }
     
-    AsyncFunction("getBestMove") { (depth: Int, promise: Promise) in
+    AsyncFunction("getBestMove") { (depth: Int, maxTimeMs: Int, promise: Promise) in
       self.ensureInitialized()
       guard let engine = self.engine else {
         NSLog("ChessEngine: Engine not initialized in getBestMove")
@@ -178,7 +178,7 @@ public class ChessEngineModule: Module {
       
       // Run on background thread to avoid blocking UI
       DispatchQueue.global(qos: .userInitiated).async {
-        let move = engine.getBestMove(Int32(depth))
+        let move = engine.getBestMove(Int32(depth), maxTimeMs: Int32(maxTimeMs))
         promise.resolve(move)
       }
     }

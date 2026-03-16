@@ -2,12 +2,28 @@
 #include "Evaluation.h"
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 namespace Chess {
 namespace V1 {
 
 // Initialize killer moves array
 std::array<std::array<Move, 2>, Search::MAX_DEPTH> Search::killerMoves = {};
+
+// Initialize time control variables
+long long Search::startTimeMs = 0;
+int Search::maxSearchTimeMs = 0;
+
+bool Search::isTimeUp() {
+    if (maxSearchTimeMs <= 0) return false;
+    
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now.time_since_epoch()
+    ).count() - startTimeMs;
+    
+    return elapsed >= maxSearchTimeMs;
+}
 
 int Search::getPieceValue(PieceType type) {
     switch (type) {
@@ -69,8 +85,14 @@ void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
     }
 }
 
-int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizing, int& nodesSearched, int ply) {
+int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizing, int& nodesSearched, int ply, bool& timeUp) {
     nodesSearched++;
+    
+    // Check time limit
+    if (isTimeUp()) {
+        timeUp = true;
+        return Evaluation::evaluate(board, ply);
+    }
     
     // Terminal node
     if (depth == 0 || board.isCheckmate() || board.isStalemate() || board.isDraw()) {
@@ -92,8 +114,12 @@ int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizin
         
         for (const Move& move : moves) {
             board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1);
+            int eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1, timeUp);
             board.unmakeMove();
+            
+            if (timeUp) {
+                return maxEval; // Time up, return best found so far
+            }
             
             if (eval > maxEval) {
                 maxEval = eval;
@@ -121,8 +147,12 @@ int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizin
         
         for (const Move& move : moves) {
             board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1);
+            int eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1, timeUp);
             board.unmakeMove();
+            
+            if (timeUp) {
+                return minEval; // Time up, return best found so far
+            }
             
             if (eval < minEval) {
                 minEval = eval;
@@ -151,9 +181,21 @@ int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizin
 SearchResult Search::findBestMove(
     Board& board,
     int maxDepth,
-    std::function<void(const SearchResult&)> progressCallback
+    std::function<void(const SearchResult&)> progressCallback,
+    int maxTimeMs
 ) {
     SearchResult finalResult;
+    
+    // Initialize time control
+    if (maxTimeMs > 0) {
+        auto now = std::chrono::steady_clock::now();
+        startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()
+        ).count();
+        maxSearchTimeMs = maxTimeMs;
+    } else {
+        maxSearchTimeMs = 0;
+    }
     
     if (maxDepth < 1) maxDepth = 1;
     if (maxDepth > 20) maxDepth = 20;
@@ -164,8 +206,10 @@ SearchResult Search::findBestMove(
         return finalResult; // No legal moves
     }
     
+    bool timeUp = false;
+    
     // Iterative deepening: search depth 1, 2, 3, ... up to maxDepth
-    for (int currentDepth = 1; currentDepth <= maxDepth; currentDepth++) {
+    for (int currentDepth = 1; currentDepth <= maxDepth && !timeUp; currentDepth++) {
         SearchResult result;
         result.depth = currentDepth;
         result.nodesSearched = 0;
@@ -190,8 +234,14 @@ SearchResult Search::findBestMove(
         
         for (const Move& move : legalMoves) {
             board.makeMove(move);
-            int score = minimax(board, currentDepth - 1, alpha, beta, false, result.nodesSearched, 1);
+            int score = minimax(board, currentDepth - 1, alpha, beta, false, result.nodesSearched, 1, timeUp);
             board.unmakeMove();
+            
+            if (timeUp) {
+                // Time is up, stop searching and use the best result we have
+                // from the previous completed depth
+                break;
+            }
             
             if (score > bestScore) {
                 bestScore = score;
@@ -201,13 +251,16 @@ SearchResult Search::findBestMove(
             alpha = std::max(alpha, score);
         }
         
-        result.bestMove = bestMove;
-        result.score = bestScore;
-        finalResult = result;
-        
-        // Call progress callback with this depth's result
-        if (progressCallback) {
-            progressCallback(result);
+        // Only update finalResult if we completed this depth
+        if (!timeUp) {
+            result.bestMove = bestMove;
+            result.score = bestScore;
+            finalResult = result;
+            
+            // Call progress callback with this depth's result
+            if (progressCallback) {
+                progressCallback(result);
+            }
         }
     }
     

@@ -23,12 +23,12 @@ const UNICODE_PIECES: Record<Color, Record<PieceType, string>> = {
     [PieceType.PAWN]: '♙',
   },
   [Color.BLACK]: {
-    [PieceType.KING]: '♔',
-    [PieceType.QUEEN]: '♕',
-    [PieceType.ROOK]: '♖',
-    [PieceType.BISHOP]: '♗',
-    [PieceType.KNIGHT]: '♘',
-    [PieceType.PAWN]: '♙',
+    [PieceType.KING]: '♚',
+    [PieceType.QUEEN]: '♛',
+    [PieceType.ROOK]: '♜',
+    [PieceType.BISHOP]: '♝',
+    [PieceType.KNIGHT]: '♞',
+    [PieceType.PAWN]: '♟',
   },
 }
 
@@ -37,9 +37,10 @@ interface ChessBoardProps {
   autoFlip?: boolean
   searchDepth?: number
   maxSearchTime?: number // milliseconds
-  playerMode?: string
   isAIEnabled?: boolean
   hideBestMove?: boolean
+  useChessClock?: boolean
+  clockTimeMinutes?: number
   onEvaluationChange?: (evaluation: number, depth: number) => void
   onBestMoveChange?: (move: string) => void
   onCurrentPlayerChange?: (player: Color) => void
@@ -50,9 +51,10 @@ export default function ChessBoard({
   autoFlip = false,
   searchDepth = 3,
   maxSearchTime,
-  playerMode: _playerMode,
   isAIEnabled = false,
   hideBestMove = false,
+  useChessClock: _useChessClock = false,
+  clockTimeMinutes: _clockTimeMinutes = 10,
   onEvaluationChange,
   onBestMoveChange,
   onCurrentPlayerChange,
@@ -79,8 +81,6 @@ export default function ChessBoard({
   const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
   const [bestMove, setBestMove] = useState<string>('')
   const [searchComplete, setSearchComplete] = useState(false)
-  const [moveHistory, setMoveHistory] = useState<string[]>([])
-  const [historyIndex, setHistoryIndex] = useState<number>(-1)
   const [capturedPieces, setCapturedPieces] = useState<{
     white: Piece[]
     black: Piece[]
@@ -93,8 +93,8 @@ export default function ChessBoard({
   const onBestMoveChangeRef = useRef(onBestMoveChange)
   const onCurrentPlayerChangeRef = useRef(onCurrentPlayerChange)
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
-  // Maximize board size - ultra minimal spacing
-  const maxBoardSize = Math.min(screenWidth * 0.98, (screenHeight - 125) * 0.98)
+  // Maximize board size - account for header, controls, and clock if present
+  const maxBoardSize = Math.min(screenWidth * 0.96, (screenHeight - 180) * 0.96)
   // Calculate square size and board size to ensure exactly 8x8 grid
   const squareSize = Math.floor(maxBoardSize / 8)
   const boardSize = squareSize * 8
@@ -253,11 +253,6 @@ export default function ChessBoard({
 
       setGameStatus(status)
 
-      // Update move history
-      const history = engine.getMoveHistory()
-      setMoveHistory(history)
-      setHistoryIndex(history.length - 1)
-
       // Get evaluation and notify parent (from white's perspective)
       const evalCallback = onEvaluationChangeRef.current
       if (evalCallback) {
@@ -274,7 +269,7 @@ export default function ChessBoard({
   }
 
   // Compute best move when game state changes
-  // Uses iterative deepening to keep UI responsive
+  // The C++ engine handles iterative deepening internally
   useEffect(() => {
     if (engine.isCheckmate() || engine.isStalemate()) {
       setBestMove('')
@@ -286,43 +281,15 @@ export default function ChessBoard({
     setSearchComplete(false)
 
     let cancelled = false
-    let currentDepth = 1
-    let lastBestMove = ''
-    // Cache current player to avoid repeated calls during search
     const playerColor = currentPlayer
-    const startTime = Date.now()
 
-    // Recursive function to compute one depth at a time
-    const computeNextDepth = async () => {
-      // Check time limit
-      if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
-        // Time limit reached, use best move found so far
-        if (cancelled) return
-        cancelled = true
-
-        const moveCallback = onBestMoveChangeRef.current
-        if (moveCallback && lastBestMove) {
-          moveCallback(lastBestMove)
-        }
-
-        // Mark search as complete
-        setSearchComplete(true)
-        return
-      }
-
-      if (cancelled || currentDepth > searchDepth) {
-        // Reached max depth - mark search as complete
-        if (!cancelled) {
-          setSearchComplete(true)
-        }
-        return
-      }
-
+    const computeBestMove = async () => {
       try {
-        // Now getBestMove is async and runs on background thread
-        const move = await engine.getBestMove(currentDepth)
-        if (!cancelled) {
-          lastBestMove = move
+        // Call getBestMove with time limit - C++ engine handles iterative deepening
+        // and will return as soon as maxSearchTime is reached
+        const move = await engine.getBestMove(searchDepth, maxSearchTime || 0)
+
+        if (!cancelled && move) {
           setBestMove(move)
 
           // Notify parent of best move change
@@ -331,31 +298,28 @@ export default function ChessBoard({
             moveCallback(move)
           }
 
-          // Update evaluation at this depth (from white's perspective)
+          // Update evaluation (from white's perspective)
           const evalCallback = onEvaluationChangeRef.current
           if (evalCallback) {
             const evaluation = engine.evaluatePosition()
             const whiteEvaluation = playerColor === Color.BLACK ? -evaluation : evaluation
-            evalCallback(whiteEvaluation, currentDepth)
+            evalCallback(whiteEvaluation, searchDepth)
           }
         }
+
+        if (!cancelled) {
+          setSearchComplete(true)
+        }
       } catch (error) {
-        console.error(`ChessBoard: getBestMove(${currentDepth}) failed:`, error)
-      }
-
-      currentDepth++
-
-      // Continue to next depth
-      if (currentDepth <= searchDepth && !cancelled) {
-        computeNextDepth()
-      } else if (!cancelled) {
-        // Finished all depths
-        setSearchComplete(true)
+        console.error('ChessBoard: getBestMove failed:', error)
+        if (!cancelled) {
+          setSearchComplete(true)
+        }
       }
     }
 
     // Start computing after a short delay
-    const timer = setTimeout(computeNextDepth, 50)
+    const timer = setTimeout(computeBestMove, 50)
 
     return () => {
       cancelled = true
@@ -392,25 +356,6 @@ export default function ChessBoard({
 
     return () => clearTimeout(timer)
   }, [isAIEnabled, bestMove, searchComplete, engine, autoFlip, isFlipped])
-
-  const handlePreviousMove = () => {
-    if (historyIndex <= 0) return
-    // Undo by reverting to previous state
-    engine.undoMove()
-    updateGameState()
-    setHistoryIndex(historyIndex - 1)
-  }
-
-  const handleNextMove = () => {
-    if (historyIndex >= moveHistory.length - 1) return
-    // Redo by making the move again
-    const move = moveHistory[historyIndex + 1]
-    if (move) {
-      engine.makeMove(move)
-      updateGameState()
-      setHistoryIndex(historyIndex + 1)
-    }
-  }
 
   const handleSquarePress = (square: number) => {
     const piece = board[square]
@@ -480,14 +425,6 @@ export default function ChessBoard({
       setSelectedSquare(null)
       setLegalMoves([])
     }
-  }
-
-  const handleRestart = () => {
-    engine.newGame()
-    setSelectedSquare(null)
-    setLegalMoves([])
-    setIsFlipped(flipped)
-    updateGameState()
   }
 
   const handleFlipBoard = () => {
@@ -655,7 +592,7 @@ export default function ChessBoard({
   const materialAdv = capturedPieces.materialAdvantage || 0
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       {/* Compact Header with Status and Captured Pieces */}
       <View style={styles.compactHeader}>
         <Text style={styles.statusText}>{gameStatus}</Text>
@@ -754,36 +691,13 @@ export default function ChessBoard({
 
       {/* Compact Controls */}
       <View style={styles.compactControls}>
-        <View style={styles.controlRow}>
-          <TouchableOpacity
-            style={[styles.compactButton, historyIndex < 0 && styles.buttonDisabled]}
-            onPress={handlePreviousMove}
-            disabled={historyIndex < 0}
-          >
-            <Text style={styles.buttonText}>←</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.compactButton} onPress={handleRestart}>
-            <Text style={styles.buttonText}>New</Text>
-          </TouchableOpacity>
-
-          {!autoFlip && (
+        {!autoFlip && (
+          <View style={styles.controlRow}>
             <TouchableOpacity style={styles.compactButton} onPress={handleFlipBoard}>
-              <Text style={styles.buttonText}>Flip</Text>
+              <Text style={styles.buttonText}>Flip Board</Text>
             </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={[
-              styles.compactButton,
-              historyIndex >= moveHistory.length - 1 && styles.buttonDisabled,
-            ]}
-            onPress={handleNextMove}
-            disabled={historyIndex >= moveHistory.length - 1}
-          >
-            <Text style={styles.buttonText}>→</Text>
-          </TouchableOpacity>
-        </View>
+          </View>
+        )}
         {!hideBestMove && bestMove && <Text style={styles.bestMoveText}>Best: {bestMove}</Text>}
       </View>
     </SafeAreaView>
@@ -864,48 +778,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: theme.colors.background.light,
   },
   compactHeader: {
     width: '100%',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     backgroundColor: '#f5f5f5',
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: theme.colors.text.light,
     textAlign: 'center',
-    marginBottom: 2,
+    marginBottom: 3,
   },
   materialContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    gap: 4,
+    gap: 6,
   },
   capturedRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 3,
     flex: 1,
   },
   sideLabel: {
-    fontSize: 12,
+    fontSize: 14,
   },
   capturedList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 1,
+    gap: 2,
     flex: 1,
   },
   capturedPieceCompact: {
-    fontSize: 14,
+    fontSize: 24,
     color: '#333',
   },
   materialAdvantage: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#2f95dc',
     marginLeft: 4,
@@ -915,7 +828,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   boardWrapper: {
-    borderWidth: 2,
+    borderWidth: 1,
     borderColor: '#333',
   },
   board: {
@@ -939,22 +852,22 @@ const styles = StyleSheet.create({
   },
   compactControls: {
     width: '100%',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
     alignItems: 'center',
-    gap: 2,
+    gap: 1,
   },
   controlRow: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
     justifyContent: 'center',
   },
   compactButton: {
     backgroundColor: theme.colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
     borderRadius: 4,
-    minWidth: 45,
+    minWidth: 40,
   },
   buttonDisabled: {
     backgroundColor: '#ccc',
@@ -962,12 +875,12 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },
   bestMoveText: {
-    fontSize: 10,
+    fontSize: 9,
     color: 'rgb(0, 150, 0)',
     fontWeight: '600',
   },

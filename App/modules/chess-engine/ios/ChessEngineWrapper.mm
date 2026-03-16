@@ -261,12 +261,12 @@ using namespace Chess;
     return _engine->loadFromFEN(fenStr);
 }
 
-- (NSString *)getBestMove:(int)depth {
+- (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs {
     if (!_engine) {
         NSLog(@"ChessEngineWrapper: Engine is null in getBestMove");
         return @"";
     }
-    std::string bestMove = _engine->getBestMove(depth);
+    std::string bestMove = _engine->getBestMove(depth, maxTimeMs);
     return [NSString stringWithUTF8String:bestMove.c_str()];
 }
 

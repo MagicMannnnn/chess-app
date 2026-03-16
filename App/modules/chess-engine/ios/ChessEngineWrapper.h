@@ -19,7 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSDictionary *> *)getBoard;
 - (NSString *)getFEN;
 - (BOOL)loadFromFEN:(NSString *)fen;
-- (NSString *)getBestMove:(int)depth;
+- (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs;
 - (NSArray<NSString *> *)getMoveHistory;
 - (BOOL)canUndo;
 - (int)evaluatePosition;

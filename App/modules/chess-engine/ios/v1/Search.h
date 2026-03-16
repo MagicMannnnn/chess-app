@@ -25,13 +25,20 @@ class Search {
 public:
     // Search for the best move using iterative deepening
     // Calls progressCallback with each completed depth level
+    // maxTimeMs: maximum time in milliseconds (0 = no time limit)
     static SearchResult findBestMove(
         Board& board, 
         int maxDepth,
-        std::function<void(const SearchResult&)> progressCallback = nullptr
+        std::function<void(const SearchResult&)> progressCallback = nullptr,
+        int maxTimeMs = 0
     );
     
 private:
+    // Time control
+    static long long startTimeMs;
+    static int maxSearchTimeMs;
+    static bool isTimeUp();
+    
     // Killer moves for move ordering (2 moves per depth)
     static constexpr int MAX_DEPTH = 64;
     static std::array<std::array<Move, 2>, MAX_DEPTH> killerMoves;
@@ -43,7 +50,8 @@ private:
         int beta,
         bool maximizing,
         int& nodesSearched,
-        int ply
+        int ply,
+        bool& timeUp
     );
     
     // Move ordering helpers

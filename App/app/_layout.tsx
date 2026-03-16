@@ -33,7 +33,13 @@ function RootLayoutNav() {
       <SettingsProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="(tabs)"
+              options={{
+                headerShown: false,
+                gestureEnabled: false,
+              }}
+            />
             <Stack.Screen name="settings" options={{ presentation: 'modal', title: 'Settings' }} />
           </Stack>
         </ThemeProvider>

@@ -1,104 +1,204 @@
 import Slider from '@react-native-community/slider'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native'
 
 import { theme } from '@/constants/theme'
 
-type PlayerMode = 'human-white' | 'human-black' | 'human-both' | 'ai-both'
+type PlayerType = 'human' | 'ai'
 
 export default function GameSetupScreen() {
   const router = useRouter()
-  const [playerMode, setPlayerMode] = useState<PlayerMode>('human-white')
-  const [maxAITime, setMaxAITime] = useState(5) // seconds
-  const [maxDepth, setMaxDepth] = useState(5)
 
-  const getPlayerModeLabel = (mode: PlayerMode): string => {
-    switch (mode) {
-      case 'human-white':
-        return 'Human (White) vs AI'
-      case 'human-black':
-        return 'Human (Black) vs AI'
-      case 'human-both':
-        return 'Human vs Human'
-      case 'ai-both':
-        return 'AI vs AI'
-    }
-  }
+  // Player configurations
+  const [whitePlayerType, setWhitePlayerType] = useState<PlayerType>('human')
+  const [blackPlayerType, setBlackPlayerType] = useState<PlayerType>('ai')
 
-  const cyclePlayerMode = () => {
-    const modes: PlayerMode[] = ['human-white', 'human-black', 'human-both', 'ai-both']
-    const currentIndex = modes.indexOf(playerMode)
-    const nextIndex = (currentIndex + 1) % modes.length
-    setPlayerMode(modes[nextIndex])
-  }
+  // AI settings for White
+  const [whiteMaxAITime, setWhiteMaxAITime] = useState(5)
+  const [whiteMaxDepth, setWhiteMaxDepth] = useState(5)
+
+  // AI settings for Black
+  const [blackMaxAITime, setBlackMaxAITime] = useState(5)
+  const [blackMaxDepth, setBlackMaxDepth] = useState(5)
+
+  // Chess clock settings
+  const [useChessClock, setUseChessClock] = useState(false)
+  const [clockTimeMinutes, setClockTimeMinutes] = useState(10)
 
   const startGame = () => {
     router.push({
       pathname: '/home/game',
       params: {
-        playerMode,
-        maxAITime: maxAITime.toString(),
-        maxDepth: maxDepth.toString(),
+        whitePlayerType,
+        blackPlayerType,
+        whiteMaxAITime: whiteMaxAITime.toString(),
+        whiteMaxDepth: whiteMaxDepth.toString(),
+        blackMaxAITime: blackMaxAITime.toString(),
+        blackMaxDepth: blackMaxDepth.toString(),
+        useChessClock: useChessClock.toString(),
+        clockTimeMinutes: clockTimeMinutes.toString(),
       },
     })
   }
 
   return (
     <View style={styles.container}>
-      <View style={styles.content}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         <Text style={styles.title}>New Game</Text>
         <Text style={styles.subtitle}>Configure your game settings</Text>
 
         <View style={styles.settingsContainer}>
-          <View style={styles.setting}>
-            <Text style={styles.settingLabel}>Game Mode</Text>
-            <TouchableOpacity style={styles.modeButton} onPress={cyclePlayerMode}>
-              <Text style={styles.modeButtonText}>{getPlayerModeLabel(playerMode)}</Text>
-            </TouchableOpacity>
+          {/* White Player Setup */}
+          <View style={styles.playerSection}>
+            <Text style={styles.playerTitle}>⚪ White Player</Text>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>AI Player</Text>
+              <Switch
+                value={whitePlayerType === 'ai'}
+                onValueChange={(value) => setWhitePlayerType(value ? 'ai' : 'human')}
+                trackColor={{ false: theme.colors.background.dark, true: theme.colors.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {whitePlayerType === 'ai' && (
+              <View style={styles.aiOptions}>
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>Max Thinking Time: {whiteMaxAITime}s</Text>
+                  <Text style={styles.settingDescription}>
+                    AI will make its best move when time runs out
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={30}
+                    step={1}
+                    value={whiteMaxAITime}
+                    onValueChange={setWhiteMaxAITime}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.background.dark}
+                    thumbTintColor={theme.colors.primary}
+                  />
+                </View>
+
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>Max Search Depth: {whiteMaxDepth}</Text>
+                  <Text style={styles.settingDescription}>
+                    Maximum depth the AI will search (higher = slower but stronger)
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={10}
+                    step={1}
+                    value={whiteMaxDepth}
+                    onValueChange={setWhiteMaxDepth}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.background.dark}
+                    thumbTintColor={theme.colors.primary}
+                  />
+                </View>
+              </View>
+            )}
           </View>
 
-          <View style={styles.setting}>
-            <Text style={styles.settingLabel}>Max AI Thinking Time: {maxAITime}s</Text>
-            <Text style={styles.settingDescription}>
-              AI will make its best move when time runs out
-            </Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={1}
-              maximumValue={30}
-              step={1}
-              value={maxAITime}
-              onValueChange={setMaxAITime}
-              minimumTrackTintColor={theme.colors.primary}
-              maximumTrackTintColor={theme.colors.background.dark}
-              thumbTintColor={theme.colors.primary}
-            />
+          {/* Black Player Setup */}
+          <View style={styles.playerSection}>
+            <Text style={styles.playerTitle}>⚫ Black Player</Text>
+
+            <View style={styles.toggleRow}>
+              <Text style={styles.toggleLabel}>AI Player</Text>
+              <Switch
+                value={blackPlayerType === 'ai'}
+                onValueChange={(value) => setBlackPlayerType(value ? 'ai' : 'human')}
+                trackColor={{ false: theme.colors.background.dark, true: theme.colors.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {blackPlayerType === 'ai' && (
+              <View style={styles.aiOptions}>
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>Max Thinking Time: {blackMaxAITime}s</Text>
+                  <Text style={styles.settingDescription}>
+                    AI will make its best move when time runs out
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={30}
+                    step={1}
+                    value={blackMaxAITime}
+                    onValueChange={setBlackMaxAITime}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.background.dark}
+                    thumbTintColor={theme.colors.primary}
+                  />
+                </View>
+
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>Max Search Depth: {blackMaxDepth}</Text>
+                  <Text style={styles.settingDescription}>
+                    Maximum depth the AI will search (higher = slower but stronger)
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={10}
+                    step={1}
+                    value={blackMaxDepth}
+                    onValueChange={setBlackMaxDepth}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.background.dark}
+                    thumbTintColor={theme.colors.primary}
+                  />
+                </View>
+              </View>
+            )}
           </View>
 
-          <View style={styles.setting}>
-            <Text style={styles.settingLabel}>Max Search Depth: {maxDepth}</Text>
-            <Text style={styles.settingDescription}>
-              Maximum depth the AI will search (higher = slower but stronger)
-            </Text>
-            <Slider
-              style={styles.slider}
-              minimumValue={1}
-              maximumValue={10}
-              step={1}
-              value={maxDepth}
-              onValueChange={setMaxDepth}
-              minimumTrackTintColor={theme.colors.primary}
-              maximumTrackTintColor={theme.colors.background.dark}
-              thumbTintColor={theme.colors.primary}
-            />
+          {/* Chess Clock Setup */}
+          <View style={styles.playerSection}>
+            <View style={styles.toggleRow}>
+              <Text style={styles.playerTitle}>⏱️ Chess Clock</Text>
+              <Switch
+                value={useChessClock}
+                onValueChange={setUseChessClock}
+                trackColor={{ false: theme.colors.background.dark, true: theme.colors.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+
+            {useChessClock && (
+              <View style={styles.aiOptions}>
+                <View style={styles.setting}>
+                  <Text style={styles.settingLabel}>Time per Player: {clockTimeMinutes} min</Text>
+                  <Text style={styles.settingDescription}>
+                    Clock starts after White's first move. Game ends if time runs out.
+                  </Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={1}
+                    maximumValue={60}
+                    step={1}
+                    value={clockTimeMinutes}
+                    onValueChange={setClockTimeMinutes}
+                    minimumTrackTintColor={theme.colors.primary}
+                    maximumTrackTintColor={theme.colors.background.dark}
+                    thumbTintColor={theme.colors.primary}
+                  />
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
         <TouchableOpacity style={styles.startButton} onPress={startGame}>
           <Text style={styles.startButtonText}>Start Game</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </View>
   )
 }
@@ -108,10 +208,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background.light,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  content: {
     padding: 24,
-    justifyContent: 'center',
+    paddingBottom: 40,
   },
   title: {
     fontSize: 32,
@@ -123,42 +225,58 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: theme.colors.text.light,
-    marginBottom: 40,
+    marginBottom: 32,
     textAlign: 'center',
   },
   settingsContainer: {
-    gap: 32,
-    marginBottom: 40,
+    gap: 24,
+    marginBottom: 32,
+  },
+  playerSection: {
+    backgroundColor: theme.colors.background.dark,
+    borderRadius: 16,
+    padding: 20,
+    gap: 16,
+  },
+  playerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: theme.colors.text.dark,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text.dark,
+  },
+  aiOptions: {
+    gap: 16,
+    marginTop: 8,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.background.light,
   },
   setting: {
     gap: 8,
   },
   settingLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: theme.colors.text.light,
+    color: theme.colors.text.dark,
   },
   settingDescription: {
-    fontSize: 14,
-    color: theme.colors.text.light,
+    fontSize: 13,
+    color: theme.colors.text.dark,
+    opacity: 0.8,
     marginBottom: 4,
   },
   slider: {
     width: '100%',
     height: 40,
-  },
-  modeButton: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  modeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
   },
   startButton: {
     backgroundColor: theme.colors.primary,

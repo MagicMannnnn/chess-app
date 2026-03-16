@@ -89,8 +89,8 @@ export class ChessEngine {
     return ChessEngineModule.loadFromFEN(fen)
   }
 
-  async getBestMove(depth: number): Promise<string> {
-    return await ChessEngineModule.getBestMove(depth)
+  async getBestMove(depth: number, maxTimeMs: number = 0): Promise<string> {
+    return await ChessEngineModule.getBestMove(depth, maxTimeMs)
   }
 
   getMoveHistory(): string[] {
