@@ -7,6 +7,9 @@ public class ChessEngineModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ChessEngine")
     
+    // Event emitter for search progress updates
+    Events("onSearchProgress")
+    
     OnCreate {
       self.initLock.lock()
       defer { self.initLock.unlock() }
@@ -180,6 +183,56 @@ public class ChessEngineModule: Module {
       DispatchQueue.global(qos: .userInitiated).async {
         let move = engine.getBestMove(Int32(depth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
         promise.resolve(move)
+      }
+    }
+    
+    AsyncFunction("getBestMoveAtDepth") { (depth: Int, maxTimeMs: Int, aiVersion: String, promise: Promise) in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in getBestMoveAtDepth")
+        promise.resolve("")
+        return
+      }
+      
+      // Run on background thread to avoid blocking UI
+      DispatchQueue.global(qos: .userInitiated).async {
+        let move = engine.getBestMove(atDepth: Int32(depth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
+        promise.resolve(move)
+      }
+    }
+    
+    AsyncFunction("searchBestMove") { (maxDepth: Int, maxTimeMs: Int, aiVersion: String, promise: Promise) in
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in searchBestMove")
+        promise.resolve([
+          "bestMove": "",
+          "score": 0,
+          "depthCompleted": 0,
+          "nodesSearched": 0,
+          "timedOut": false,
+          "totalTimeMs": 0,
+          "progressHistory": []
+        ])
+        return
+      }
+      
+      // Run on background thread to avoid blocking UI
+      DispatchQueue.global(qos: .userInitiated).async {
+        NSLog("ChessEngine: Starting searchBestMove with maxDepth=\(maxDepth), maxTime=\(maxTimeMs)ms, version=\(aiVersion)")
+        let result = engine.searchBestMove(Int32(maxDepth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
+        NSLog("ChessEngine: Search completed - bestMove=\(result["bestMove"] ?? "none"), depth=\(result["depthCompleted"] ?? 0)")
+        
+        // Emit progress events for each completed depth BEFORE resolving promise
+        if let progressHistory = result["progressHistory"] as? [[String: Any]] {
+          for progress in progressHistory {
+            self.sendEvent("onSearchProgress", progress)
+            // Small delay to ensure events are processed in order
+            Thread.sleep(forTimeInterval: 0.01)
+          }
+        }
+        
+        promise.resolve(result)
       }
     }
     

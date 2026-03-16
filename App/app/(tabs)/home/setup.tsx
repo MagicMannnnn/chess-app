@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
   },
   picker: {
     width: '100%',
-    backgroundColor: theme.colors.background.light,
+    backgroundColor: theme.colors.background.dark,
     borderRadius: 8,
     marginTop: 4,
   },

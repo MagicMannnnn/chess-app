@@ -1,4 +1,5 @@
 #include "Evaluation.h"
+#include <cmath>
 
 namespace Chess {
 namespace V1 {
@@ -28,109 +29,109 @@ int Evaluation::evaluateMaterial(const Board& board, Color color) {
     return material;
 }
 
-int Evaluation::evaluateMobility(const Board& board, Color color) {
-    // Mobility: number of legal moves available
-    // This is a simple measure of piece activity
-    return static_cast<int>(board.generatePseudoLegalMoves(color).size());
-}
-
-int Evaluation::countAttackedSquares(const Board& board, Color color, int rank, int file) {
-    int count = 0;
-    Piece piece = board.getPiece(rank * 8 + file);
-    
-    if (piece.isEmpty() || piece.color != color) {
+int Evaluation::countAttackedSquares(const Board& board, Square from, Color attackerColor) {
+    Piece piece = board.getPiece(from);
+    if (piece.isEmpty() || piece.color != attackerColor) {
         return 0;
     }
     
-    // Helper to check if a square is valid and count it
-    auto checkSquare = [&board, color, &count](int r, int f) {
-        if (r >= 0 && r < 8 && f >= 0 && f < 8) {
-            Piece target = board.getPiece(r * 8 + f);
-            // Count empty squares and enemy pieces (attacked), and friendly pieces (defended)
-            if (target.isEmpty() || target.color != color || target.color == color) {
-                count++;
-            }
-        }
-    };
+    int count = 0;
+    int row = from / 8;
+    int col = from % 8;
+    
+    // Direction vectors for different piece types
+    static const int knightMoves[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
+    static const int kingMoves[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
+    static const int bishopDirs[4][2] = {{-1,-1},{-1,1},{1,-1},{1,1}};
+    static const int rookDirs[4][2] = {{-1,0},{0,-1},{0,1},{1,0}};
     
     switch (piece.type) {
         case PieceType::PAWN: {
-            int direction = (color == Color::WHITE) ? 1 : -1;
-            // Pawns attack diagonally
-            checkSquare(rank + direction, file - 1);
-            checkSquare(rank + direction, file + 1);
+            int direction = (piece.color == Color::WHITE) ? 1 : -1;
+            // Pawn attacks diagonally
+            for (int dc = -1; dc <= 1; dc += 2) {
+                int newRow = row + direction;
+                int newCol = col + dc;
+                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    count++;
+                }
+            }
             break;
         }
-        
         case PieceType::KNIGHT: {
-            // Knight moves in L shape
-            const int knightMoves[8][2] = {{-2,-1},{-2,1},{-1,-2},{-1,2},{1,-2},{1,2},{2,-1},{2,1}};
-            for (const auto& move : knightMoves) {
-                checkSquare(rank + move[0], file + move[1]);
+            for (int i = 0; i < 8; i++) {
+                int newRow = row + knightMoves[i][0];
+                int newCol = col + knightMoves[i][1];
+                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    count++;
+                }
             }
             break;
         }
-        
         case PieceType::BISHOP: {
-            // Bishop moves diagonally
-            const int directions[4][2] = {{-1,-1},{-1,1},{1,-1},{1,1}};
-            for (const auto& dir : directions) {
-                int r = rank + dir[0];
-                int f = file + dir[1];
-                while (r >= 0 && r < 8 && f >= 0 && f < 8) {
-                    Piece target = board.getPiece(r * 8 + f);
+            for (int i = 0; i < 4; i++) {
+                int newRow = row + bishopDirs[i][0];
+                int newCol = col + bishopDirs[i][1];
+                while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
                     count++;
-                    if (!target.isEmpty()) break; // Blocked by piece
-                    r += dir[0];
-                    f += dir[1];
+                    Square sq = newRow * 8 + newCol;
+                    if (!board.getPiece(sq).isEmpty()) break;
+                    newRow += bishopDirs[i][0];
+                    newCol += bishopDirs[i][1];
                 }
             }
             break;
         }
-        
         case PieceType::ROOK: {
-            // Rook moves horizontally and vertically
-            const int directions[4][2] = {{-1,0},{1,0},{0,-1},{0,1}};
-            for (const auto& dir : directions) {
-                int r = rank + dir[0];
-                int f = file + dir[1];
-                while (r >= 0 && r < 8 && f >= 0 && f < 8) {
-                    Piece target = board.getPiece(r * 8 + f);
+            for (int i = 0; i < 4; i++) {
+                int newRow = row + rookDirs[i][0];
+                int newCol = col + rookDirs[i][1];
+                while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
                     count++;
-                    if (!target.isEmpty()) break; // Blocked by piece
-                    r += dir[0];
-                    f += dir[1];
+                    Square sq = newRow * 8 + newCol;
+                    if (!board.getPiece(sq).isEmpty()) break;
+                    newRow += rookDirs[i][0];
+                    newCol += rookDirs[i][1];
                 }
             }
             break;
         }
-        
         case PieceType::QUEEN: {
-            // Queen moves in all 8 directions
-            const int directions[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
-            for (const auto& dir : directions) {
-                int r = rank + dir[0];
-                int f = file + dir[1];
-                while (r >= 0 && r < 8 && f >= 0 && f < 8) {
-                    Piece target = board.getPiece(r * 8 + f);
+            // Queen combines rook and bishop movement
+            for (int i = 0; i < 4; i++) {
+                // Bishop directions
+                int newRow = row + bishopDirs[i][0];
+                int newCol = col + bishopDirs[i][1];
+                while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
                     count++;
-                    if (!target.isEmpty()) break; // Blocked by piece
-                    r += dir[0];
-                    f += dir[1];
+                    Square sq = newRow * 8 + newCol;
+                    if (!board.getPiece(sq).isEmpty()) break;
+                    newRow += bishopDirs[i][0];
+                    newCol += bishopDirs[i][1];
+                }
+                // Rook directions
+                newRow = row + rookDirs[i][0];
+                newCol = col + rookDirs[i][1];
+                while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    count++;
+                    Square sq = newRow * 8 + newCol;
+                    if (!board.getPiece(sq).isEmpty()) break;
+                    newRow += rookDirs[i][0];
+                    newCol += rookDirs[i][1];
                 }
             }
             break;
         }
-        
         case PieceType::KING: {
-            // King moves one square in any direction
-            const int directions[8][2] = {{-1,-1},{-1,0},{-1,1},{0,-1},{0,1},{1,-1},{1,0},{1,1}};
-            for (const auto& dir : directions) {
-                checkSquare(rank + dir[0], file + dir[1]);
+            for (int i = 0; i < 8; i++) {
+                int newRow = row + kingMoves[i][0];
+                int newCol = col + kingMoves[i][1];
+                if (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
+                    count++;
+                }
             }
             break;
         }
-        
         default:
             break;
     }
@@ -139,14 +140,32 @@ int Evaluation::countAttackedSquares(const Board& board, Color color, int rank, 
 }
 
 int Evaluation::evaluatePieceActivity(const Board& board, Color color) {
+    // Simplified activity evaluation - just count mobility bonus per piece
+    // Much faster than counting all attacked squares
     int activity = 0;
     
     for (int sq = 0; sq < 64; sq++) {
         Piece piece = board.getPiece(sq);
         if (!piece.isEmpty() && piece.color == color) {
+            // Simple bonus based on piece type and centralization
+            // instead of expensive square counting
             int rank = sq / 8;
             int file = sq % 8;
-            activity += countAttackedSquares(board, color, rank, file);
+            int centerDist = std::abs(rank - 4) + std::abs(file - 4);
+            
+            switch (piece.type) {
+                case PieceType::KNIGHT:
+                case PieceType::BISHOP:
+                    // Knights and bishops benefit from centralization
+                    activity += (8 - centerDist);
+                    break;
+                case PieceType::QUEEN:
+                    // Queen gets small bonus
+                    activity += (8 - centerDist) / 2;
+                    break;
+                default:
+                    break;
+            }
         }
     }
     
@@ -155,100 +174,51 @@ int Evaluation::evaluatePieceActivity(const Board& board, Color color) {
 
 int Evaluation::evaluateKingSafety(const Board& board, Color color) {
     int safety = 0;
+    Color opponent = oppositeColor(color);
     
-    // Find the king
-    int kingSquare = -1;
+    // Find king position
+    Square kingSquare = -1;
     for (int sq = 0; sq < 64; sq++) {
         Piece piece = board.getPiece(sq);
-        if (piece.type == PieceType::KING && piece.color == color) {
+        if (!piece.isEmpty() && piece.type == PieceType::KING && piece.color == color) {
             kingSquare = sq;
             break;
         }
     }
     
-    if (kingSquare == -1) return 0;
+    if (kingSquare < 0) return -1000; // King not found (should never happen)
     
-    int kingRank = kingSquare / 8;
-    int kingFile = kingSquare % 8;
+    int kingRow = kingSquare / 8;
+    int kingCol = kingSquare % 8;
     
-    // Evaluate pawn shield (friendly pawns near the king)
+    // Pawn shield: pawns in front of king
     int pawnShield = 0;
-    for (int dr = -1; dr <= 1; dr++) {
-        for (int df = -1; df <= 1; df++) {
-            if (dr == 0 && df == 0) continue;
-            
-            int r = kingRank + dr;
-            int f = kingFile + df;
-            
-            if (r >= 0 && r < 8 && f >= 0 && f < 8) {
-                Piece piece = board.getPiece(r * 8 + f);
-                if (piece.type == PieceType::PAWN && piece.color == color) {
-                    pawnShield++;
-                }
+    int direction = (color == Color::WHITE) ? 1 : -1;
+    
+    for (int dc = -1; dc <= 1; dc++) {
+        int shieldRow = kingRow + direction;
+        int shieldCol = kingCol + dc;
+        
+        if (shieldCol >= 0 && shieldCol < 8 && shieldRow >= 0 && shieldRow < 8) {
+            Square sq = shieldRow * 8 + shieldCol;
+            Piece piece = board.getPiece(sq);
+            if (!piece.isEmpty() && piece.type == PieceType::PAWN && piece.color == color) {
+                pawnShield++;
+            }
+        }
+        
+        // Check second rank of shield
+        shieldRow = kingRow + direction * 2;
+        if (shieldCol >= 0 && shieldCol < 8 && shieldRow >= 0 && shieldRow < 8) {
+            Square sq = shieldRow * 8 + shieldCol;
+            Piece piece = board.getPiece(sq);
+            if (!piece.isEmpty() && piece.type == PieceType::PAWN && piece.color == color) {
+                pawnShield++;
             }
         }
     }
     
-    safety += pawnShield * PAWN_SHIELD_WEIGHT;
-    
-    // Evaluate enemy piece attacks near the king
-    Color enemy = oppositeColor(color);
-    int enemyAttacks = 0;
-    
-    for (int dr = -1; dr <= 1; dr++) {
-        for (int df = -1; df <= 1; df++) {
-            int r = kingRank + dr;
-            int f = kingFile + df;
-            
-            if (r >= 0 && r < 8 && f >= 0 && f < 8) {
-                // Count enemy pieces that can attack this square
-                for (int sq = 0; sq < 64; sq++) {
-                    Piece piece = board.getPiece(sq);
-                    if (!piece.isEmpty() && piece.color == enemy) {
-                        int pieceRank = sq / 8;
-                        int pieceFile = sq % 8;
-                        
-                        // Simple check if enemy piece attacks this square
-                        bool attacks = false;
-                        
-                        switch (piece.type) {
-                            case PieceType::PAWN: {
-                                int dir = (enemy == Color::WHITE) ? 1 : -1;
-                                if (pieceRank + dir == r && (pieceFile - 1 == f || pieceFile + 1 == f)) {
-                                    attacks = true;
-                                }
-                                break;
-                            }
-                            case PieceType::KNIGHT: {
-                                int dr2 = abs(pieceRank - r);
-                                int df2 = abs(pieceFile - f);
-                                if ((dr2 == 2 && df2 == 1) || (dr2 == 1 && df2 == 2)) {
-                                    attacks = true;
-                                }
-                                break;
-                            }
-                            case PieceType::KING: {
-                                if (abs(pieceRank - r) <= 1 && abs(pieceFile - f) <= 1) {
-                                    attacks = true;
-                                }
-                                break;
-                            }
-                            default:
-                                // For sliding pieces, we'd need to check paths
-                                // Simplified for now
-                                break;
-                        }
-                        
-                        if (attacks) {
-                            enemyAttacks++;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    safety -= enemyAttacks * KING_ATTACK_WEIGHT;
+    safety += pawnShield * KING_SAFETY_WEIGHT;
     
     return safety;
 }
@@ -282,6 +252,7 @@ int Evaluation::getPositionBonus(PieceType type, int rank, int file, Color color
             return bonus / 2;
         case PieceType::KING:
             // King should stay safe in the opening/middlegame
+            // In endgame (not detected here), king should centralize
             return -bonus / 2;  // Small penalty for centralizing too early
         case PieceType::ROOK:
             // Rooks don't benefit much from centralization
@@ -306,14 +277,29 @@ int Evaluation::evaluatePositionBonus(const Board& board, Color color) {
     return bonus;
 }
 
+int Evaluation::evaluate(const Board& board) {
+    return evaluate(board, 0);
+}
+
+int Evaluation::evaluateMaterialOnly(const Board& board) {
+    Color currentPlayer = board.getCurrentPlayer();
+    Color opponent = oppositeColor(currentPlayer);
+    
+    // Quick material-only evaluation for quiescence search
+    int ourMaterial = evaluateMaterial(board, currentPlayer);
+    int theirMaterial = evaluateMaterial(board, opponent);
+    
+    return ourMaterial - theirMaterial;
+}
+
 int Evaluation::evaluate(const Board& board, int ply) {
     Color currentPlayer = board.getCurrentPlayer();
     Color opponent = oppositeColor(currentPlayer);
     
-    // Check for game over conditions
+    // Check for checkmate - prioritize based on depth
     if (board.isCheckmate()) {
-        // Return mate score adjusted for distance
-        // Closer mates are better (more negative for the losing side)
+        // Negative score (we're checkmated)
+        // Closer mates are worse, so subtract ply to make them more negative
         return -MATE_SCORE + ply;
     }
     
@@ -326,12 +312,12 @@ int Evaluation::evaluate(const Board& board, int ply) {
     int theirMaterial = evaluateMaterial(board, opponent);
     int materialScore = ourMaterial - theirMaterial;
     
-    // Piece activity evaluation (attacks and defense)
+    // Piece activity evaluation (second priority)
     int ourActivity = evaluatePieceActivity(board, currentPlayer);
     int theirActivity = evaluatePieceActivity(board, opponent);
-    int activityScore = (ourActivity - theirActivity) * ACTIVITY_WEIGHT;
+    int activityScore = (ourActivity - theirActivity) * PIECE_ACTIVITY_WEIGHT;
     
-    // King safety evaluation
+    // King safety evaluation (third priority)
     int ourKingSafety = evaluateKingSafety(board, currentPlayer);
     int theirKingSafety = evaluateKingSafety(board, opponent);
     int kingSafetyScore = ourKingSafety - theirKingSafety;
@@ -341,17 +327,7 @@ int Evaluation::evaluate(const Board& board, int ply) {
     int theirPosition = evaluatePositionBonus(board, opponent);
     int positionScore = (ourPosition - theirPosition) * POSITION_WEIGHT;
     
-    // Mobility evaluation (less weight than other factors)
-    int ourMobility = evaluateMobility(board, currentPlayer);
-    int theirMobility = evaluateMobility(board, opponent);
-    int mobilityScore = (ourMobility - theirMobility) * 2;
-    
-    return materialScore + activityScore + kingSafetyScore + positionScore + mobilityScore;
-}
-
-int Evaluation::evaluate(const Board& board) {
-    // Default overload calls the ply version with 0
-    return evaluate(board, 0);
+    return materialScore + activityScore + kingSafetyScore + positionScore;
 }
 
 } // namespace V1

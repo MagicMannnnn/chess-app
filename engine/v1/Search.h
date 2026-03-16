@@ -46,6 +46,15 @@ public:
         int maxTimeMs = 0
     );
     
+    // Search at exactly one depth (no iterative deepening)
+    // Uses existing transposition table from previous searches
+    // This is for when JS manages iterative deepening
+    static SearchResult findBestMoveAtDepth(
+        Board& board,
+        int depth,
+        int maxTimeMs = 0
+    );
+    
     // Clear search caches (call when starting a new game)
     static void clearCaches();
     

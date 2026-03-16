@@ -25,6 +25,7 @@ export default function SandboxStack() {
       }}
     >
       <Stack.Screen name="index" options={{ title: 'Sandbox' }} />
+      <Stack.Screen name="performance-test" options={{ title: 'Performance Test' }} />
     </Stack>
   )
 }

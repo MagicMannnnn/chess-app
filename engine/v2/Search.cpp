@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <array>
+#include <cstdint>
 
 namespace Chess {
 namespace V2 {
@@ -11,6 +12,7 @@ namespace V2 {
 namespace {
 constexpr int MATE_SCORE = 30000;
 constexpr int TIME_CHECK_MASK = 2047; // check time every 2048 nodes
+constexpr int ASPIRATION_WINDOW = 50;
 
 inline CastlingRights buildCastlingRights(const Board& board) {
     uint8_t castlingRights = board.getCastlingRights();
@@ -21,6 +23,14 @@ inline CastlingRights buildCastlingRights(const Board& board) {
     rights.blackKingSide  = (castlingRights & Chess::CastlingRights::BLACK_KINGSIDE) != 0;
     rights.blackQueenSide = (castlingRights & Chess::CastlingRights::BLACK_QUEENSIDE) != 0;
     return rights;
+}
+
+inline int colorIndex(Color color) {
+    return color == Color::WHITE ? 0 : 1;
+}
+
+inline int squareIndex(const Position& pos) {
+    return pos.row * 8 + pos.col;
 }
 
 inline int evaluatePosition(const Board& board) {
@@ -50,9 +60,71 @@ inline int terminalScore(Board& board, int ply) {
 // Initialize killer moves array
 std::array<std::array<Move, 2>, Search::MAX_DEPTH> Search::killerMoves = {};
 
+// Initialize history heuristic
+std::array<std::array<std::array<int, 64>, 64>, 2> Search::historyHeuristic = {};
+
+// Track last best move and score for move ordering
+Move Search::lastBestMove = Move();
+int Search::lastBestScore = 0;
+
+// Transposition table
+std::unordered_map<uint64_t, TranspositionEntry> Search::transpositionTable;
+
 // Initialize time control variables
 long long Search::startTimeMs = 0;
 int Search::maxSearchTimeMs = 0;
+
+uint64_t Search::hashBoard(const Board& board) {
+    // Much cheaper fallback than hashing the FEN string every node.
+    // This is not as strong as proper Zobrist hashing, but is significantly faster.
+    uint64_t hash = 1469598103934665603ULL; // FNV offset basis
+
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            Piece p = board.getPiece(r, c);
+            if (p.isEmpty()) {
+                continue;
+            }
+
+            uint64_t pieceCode = static_cast<uint64_t>(static_cast<int>(p.type) + 1);
+            uint64_t colorCode = (p.color == Color::WHITE) ? 1ULL : 2ULL;
+            uint64_t squareCode = static_cast<uint64_t>(r * 8 + c + 1);
+
+            uint64_t value = pieceCode;
+            value = value * 3ULL + colorCode;
+            value = value * 67ULL + squareCode;
+
+            hash ^= value;
+            hash *= 1099511628211ULL; // FNV prime
+        }
+    }
+
+    hash ^= static_cast<uint64_t>(board.getCurrentPlayer() == Color::WHITE ? 1ULL : 2ULL);
+    hash *= 1099511628211ULL;
+
+    hash ^= static_cast<uint64_t>(board.getCastlingRights());
+    hash *= 1099511628211ULL;
+
+    return hash;
+}
+
+void Search::clearCaches() {
+    transpositionTable.clear();
+
+    for (auto& depthMoves : killerMoves) {
+        depthMoves[0] = Move();
+        depthMoves[1] = Move();
+    }
+
+    for (auto& colorTable : historyHeuristic) {
+        for (auto& fromTable : colorTable) {
+            fromTable.fill(0);
+        }
+    }
+
+    lastBestMove = Move();
+    lastBestScore = 0;
+}
 
 bool Search::isTimeUp() {
     if (maxSearchTimeMs <= 0) {
@@ -79,31 +151,46 @@ int Search::getPieceValue(PieceType type) {
     }
 }
 
-int Search::getMoveScore(const Board& board, const Move& move, int ply) {
+int Search::getMoveScore(const Board& board, const Move& move, int ply, const Move& ttMove) {
+    // TT move first
+    if (ttMove.isValid() && move == ttMove) {
+        return 2000000;
+    }
+
     int score = 0;
 
     if (move.isPromotion()) {
-        score += 9000 + getPieceValue(move.getPromotion());
+        score += 900000 + getPieceValue(move.getPromotion());
     }
 
     if (move.isCapture()) {
         Piece fromPiece = board.getPiece(move.getFrom());
         Piece toPiece = board.getPiece(move.getTo());
 
-        score += 10000;
+        score += 1000000;
         score += getPieceValue(toPiece.type) * 10 - getPieceValue(fromPiece.type);
-    } else if (ply < MAX_DEPTH) {
+        return score;
+    }
+
+    if (ply < MAX_DEPTH) {
         if (move == killerMoves[ply][0]) {
-            score += 8000;
+            score += 800000;
         } else if (move == killerMoves[ply][1]) {
-            score += 7000;
+            score += 700000;
         }
+    }
+
+    Position from = move.getFrom();
+    Position to = move.getTo();
+    if (from.isValid() && to.isValid()) {
+        const int side = colorIndex(board.getCurrentPlayer());
+        score += historyHeuristic[side][squareIndex(from)][squareIndex(to)];
     }
 
     return score;
 }
 
-void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
+void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply, const Move& ttMove) {
     struct ScoredMove {
         int score;
         Move move;
@@ -113,7 +200,7 @@ void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
     scoredMoves.reserve(moves.size());
 
     for (const Move& move : moves) {
-        scoredMoves.push_back({getMoveScore(board, move, ply), move});
+        scoredMoves.push_back({getMoveScore(board, move, ply, ttMove), move});
     }
 
     std::sort(
@@ -141,9 +228,35 @@ int Search::minimax(
 ) {
     nodesSearched++;
 
+    const int alphaOriginal = alpha;
+    const int betaOriginal = beta;
+
     if ((nodesSearched & TIME_CHECK_MASK) == 0 && isTimeUp()) {
         timeUp = true;
         return evaluatePosition(board);
+    }
+
+    const uint64_t hash = hashBoard(board);
+
+    Move ttMove;
+    auto ttIt = transpositionTable.find(hash);
+    if (ttIt != transpositionTable.end()) {
+        const TranspositionEntry& entry = ttIt->second;
+        ttMove = entry.bestMove;
+
+        if (entry.depth >= depth) {
+            if (entry.type == TranspositionEntry::EXACT) {
+                return entry.score;
+            } else if (entry.type == TranspositionEntry::LOWER_BOUND) {
+                alpha = std::max(alpha, entry.score);
+            } else if (entry.type == TranspositionEntry::UPPER_BOUND) {
+                beta = std::min(beta, entry.score);
+            }
+
+            if (alpha >= beta) {
+                return entry.score;
+            }
+        }
     }
 
     if (depth == 0) {
@@ -155,16 +268,16 @@ int Search::minimax(
     }
 
     std::vector<Move> moves = board.generateLegalMoves();
-
     if (moves.empty()) {
         return terminalScore(board, ply);
     }
 
-    orderMoves(board, moves, ply);
+    orderMoves(board, moves, ply, ttMove);
+
+    Move bestMove;
+    int bestScore = maximizing ? -INFINITY_SCORE : INFINITY_SCORE;
 
     if (maximizing) {
-        int bestScore = -INFINITY_SCORE;
-
         for (const Move& move : moves) {
             board.makeMove(move);
             const int score = minimax(
@@ -185,6 +298,7 @@ int Search::minimax(
 
             if (score > bestScore) {
                 bestScore = score;
+                bestMove = move;
             }
 
             if (score > alpha) {
@@ -197,52 +311,83 @@ int Search::minimax(
                         killerMoves[ply][1] = killerMoves[ply][0];
                         killerMoves[ply][0] = move;
                     }
+
+                    Position from = move.getFrom();
+                    Position to = move.getTo();
+                    if (from.isValid() && to.isValid()) {
+                        const int side = colorIndex(board.getCurrentPlayer());
+                        historyHeuristic[side][squareIndex(from)][squareIndex(to)] += depth * depth;
+                    }
                 }
                 break;
             }
         }
+    } else {
+        for (const Move& move : moves) {
+            board.makeMove(move);
+            const int score = minimax(
+                board,
+                depth - 1,
+                alpha,
+                beta,
+                true,
+                nodesSearched,
+                ply + 1,
+                timeUp
+            );
+            board.unmakeMove();
 
-        return bestScore;
-    }
-
-    int bestScore = INFINITY_SCORE;
-
-    for (const Move& move : moves) {
-        board.makeMove(move);
-        const int score = minimax(
-            board,
-            depth - 1,
-            alpha,
-            beta,
-            true,
-            nodesSearched,
-            ply + 1,
-            timeUp
-        );
-        board.unmakeMove();
-
-        if (timeUp) {
-            return bestScore == INFINITY_SCORE ? evaluatePosition(board) : bestScore;
-        }
-
-        if (score < bestScore) {
-            bestScore = score;
-        }
-
-        if (score < beta) {
-            beta = score;
-        }
-
-        if (alpha >= beta) {
-            if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
-                if (killerMoves[ply][0] != move) {
-                    killerMoves[ply][1] = killerMoves[ply][0];
-                    killerMoves[ply][0] = move;
-                }
+            if (timeUp) {
+                return bestScore == INFINITY_SCORE ? evaluatePosition(board) : bestScore;
             }
-            break;
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+
+            if (score < beta) {
+                beta = score;
+            }
+
+            if (alpha >= beta) {
+                if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
+                    if (killerMoves[ply][0] != move) {
+                        killerMoves[ply][1] = killerMoves[ply][0];
+                        killerMoves[ply][0] = move;
+                    }
+
+                    Position from = move.getFrom();
+                    Position to = move.getTo();
+                    if (from.isValid() && to.isValid()) {
+                        const int side = colorIndex(board.getCurrentPlayer());
+                        historyHeuristic[side][squareIndex(from)][squareIndex(to)] += depth * depth;
+                    }
+                }
+                break;
+            }
         }
     }
+
+    if (transpositionTable.size() >= MAX_TT_SIZE) {
+        transpositionTable.clear();
+    }
+
+    TranspositionEntry entry;
+    entry.hash = hash;
+    entry.bestMove = bestMove;
+    entry.score = bestScore;
+    entry.depth = depth;
+
+    if (bestScore <= alphaOriginal) {
+        entry.type = TranspositionEntry::UPPER_BOUND;
+    } else if (bestScore >= betaOriginal) {
+        entry.type = TranspositionEntry::LOWER_BOUND;
+    } else {
+        entry.type = TranspositionEntry::EXACT;
+    }
+
+    transpositionTable[hash] = entry;
 
     return bestScore;
 }
@@ -299,20 +444,171 @@ SearchResult Search::findBestMove(
         int alpha = -INFINITY_SCORE;
         int beta = INFINITY_SCORE;
 
-        if (currentDepth > 1 && finalResult.bestMove.isValid()) {
-            auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
-            if (it != legalMoves.end()) {
-                std::rotate(legalMoves.begin(), it, it + 1);
-            }
-        } else {
-            orderMoves(board, legalMoves, 0);
+        if (currentDepth >= 3 && finalResult.bestMove.isValid()) {
+            alpha = finalResult.score - ASPIRATION_WINDOW;
+            beta = finalResult.score + ASPIRATION_WINDOW;
         }
+
+        bool needResearch = false;
+        do {
+            needResearch = false;
+            timeUp = false;
+            bestScore = -INFINITY_SCORE;
+            bestMove = legalMoves.front();
+
+            // First order by heuristics/TT
+            Move rootTtMove;
+            const uint64_t rootHash = hashBoard(board);
+            auto ttIt = transpositionTable.find(rootHash);
+            if (ttIt != transpositionTable.end()) {
+                rootTtMove = ttIt->second.bestMove;
+            }
+            orderMoves(board, legalMoves, 0, rootTtMove);
+
+            // Then strongly prioritize previous iteration PV move
+            if (finalResult.bestMove.isValid()) {
+                auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
+                if (it != legalMoves.end()) {
+                    std::rotate(legalMoves.begin(), it, it + 1);
+                }
+            }
+
+            for (const Move& move : legalMoves) {
+                board.makeMove(move);
+                const int score = minimax(
+                    board,
+                    currentDepth - 1,
+                    alpha,
+                    beta,
+                    false,
+                    result.nodesSearched,
+                    1,
+                    timeUp
+                );
+                board.unmakeMove();
+
+                if (timeUp) {
+                    break;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = move;
+                }
+
+                if (score > alpha) {
+                    alpha = score;
+                }
+            }
+
+            if (!timeUp && currentDepth >= 3 && finalResult.bestMove.isValid()) {
+                if (bestScore <= finalResult.score - ASPIRATION_WINDOW) {
+                    alpha = -INFINITY_SCORE;
+                    beta = INFINITY_SCORE;
+                    needResearch = true;
+                } else if (bestScore >= finalResult.score + ASPIRATION_WINDOW) {
+                    alpha = -INFINITY_SCORE;
+                    beta = INFINITY_SCORE;
+                    needResearch = true;
+                }
+            }
+        } while (needResearch && !timeUp);
+
+        if (!timeUp) {
+            result.bestMove = bestMove;
+            result.score = bestScore;
+            finalResult = result;
+
+            lastBestMove = bestMove;
+            lastBestScore = bestScore;
+
+            if (progressCallback) {
+                progressCallback(result);
+            }
+        }
+    }
+
+    return finalResult;
+}
+
+SearchResult Search::findBestMoveAtDepth(
+    Board& board,
+    int depth,
+    int maxTimeMs
+) {
+    SearchResult result;
+    result.depth = depth;
+    result.nodesSearched = 0;
+
+    if (maxTimeMs > 0) {
+        auto now = std::chrono::steady_clock::now();
+        startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()
+        ).count();
+        maxSearchTimeMs = maxTimeMs;
+    } else {
+        maxSearchTimeMs = 0;
+    }
+
+    if (depth < 1) {
+        depth = 1;
+    }
+    if (depth > 20) {
+        depth = 20;
+    }
+
+    std::vector<Move> legalMoves = board.generateLegalMoves();
+
+    if (legalMoves.empty()) {
+        result.score = terminalScore(board, 0);
+        return result;
+    }
+
+    result.bestMove = legalMoves.front();
+    result.score = evaluatePosition(board);
+
+    int bestScore = -INFINITY_SCORE;
+    Move bestMove = legalMoves.front();
+
+    int alpha;
+    int beta;
+    if (depth >= 3 && lastBestMove.isValid()) {
+        alpha = lastBestScore - ASPIRATION_WINDOW;
+        beta = lastBestScore + ASPIRATION_WINDOW;
+    } else {
+        alpha = -INFINITY_SCORE;
+        beta = INFINITY_SCORE;
+    }
+
+    Move rootTtMove;
+    const uint64_t rootHash = hashBoard(board);
+    auto ttIt = transpositionTable.find(rootHash);
+    if (ttIt != transpositionTable.end()) {
+        rootTtMove = ttIt->second.bestMove;
+    }
+
+    orderMoves(board, legalMoves, 0, rootTtMove);
+
+    if (lastBestMove.isValid()) {
+        auto it = std::find(legalMoves.begin(), legalMoves.end(), lastBestMove);
+        if (it != legalMoves.end()) {
+            std::rotate(legalMoves.begin(), it, it + 1);
+        }
+    }
+
+    bool needResearch = false;
+    bool timeUp = false;
+
+    do {
+        needResearch = false;
+        timeUp = false;
+        bestScore = -INFINITY_SCORE;
 
         for (const Move& move : legalMoves) {
             board.makeMove(move);
             const int score = minimax(
                 board,
-                currentDepth - 1,
+                depth - 1,
                 alpha,
                 beta,
                 false,
@@ -336,18 +632,26 @@ SearchResult Search::findBestMove(
             }
         }
 
-        if (!timeUp) {
-            result.bestMove = bestMove;
-            result.score = bestScore;
-            finalResult = result;
-
-            if (progressCallback) {
-                progressCallback(result);
+        if (!timeUp && depth >= 3 && lastBestMove.isValid()) {
+            if (bestScore <= lastBestScore - ASPIRATION_WINDOW) {
+                alpha = -INFINITY_SCORE;
+                beta = INFINITY_SCORE;
+                needResearch = true;
+            } else if (bestScore >= lastBestScore + ASPIRATION_WINDOW) {
+                alpha = -INFINITY_SCORE;
+                beta = INFINITY_SCORE;
+                needResearch = true;
             }
         }
-    }
+    } while (needResearch);
 
-    return finalResult;
+    result.bestMove = bestMove;
+    result.score = bestScore;
+
+    lastBestMove = bestMove;
+    lastBestScore = bestScore;
+
+    return result;
 }
 
 } // namespace V2

@@ -271,6 +271,60 @@ using namespace Chess;
     return [NSString stringWithUTF8String:bestMove.c_str()];
 }
 
+- (NSString *)getBestMoveAtDepth:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in getBestMoveAtDepth");
+        return @"";
+    }
+    std::string versionStr = aiVersion ? [aiVersion UTF8String] : "v1";
+    std::string bestMove = _engine->getBestMoveAtDepth(depth, maxTimeMs, versionStr);
+    return [NSString stringWithUTF8String:bestMove.c_str()];
+}
+
+- (NSDictionary *)searchBestMove:(int)maxDepth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in searchBestMove");
+        return @{
+            @"bestMove": @"",
+            @"score": @0,
+            @"depthCompleted": @0,
+            @"nodesSearched": @0,
+            @"timedOut": @NO,
+            @"totalTimeMs": @0,
+            @"progressHistory": @[]
+        };
+    }
+    
+    std::string versionStr = aiVersion ? [aiVersion UTF8String] : "v1";
+    Chess::ChessEngine::SearchResultData result = _engine->searchBestMove(maxDepth, maxTimeMs, versionStr);
+    
+    // Convert progress history to NSArray
+    NSMutableArray *progressArray = [NSMutableArray arrayWithCapacity:result.progressHistory.size()];
+    for (const auto& progress : result.progressHistory) {
+        NSDictionary *progressDict = @{
+            @"depth": @(progress.depth),
+            @"bestMove": [NSString stringWithUTF8String:progress.bestMove.c_str()],
+            @"score": @(progress.score),
+            @"nodesSearched": @(progress.nodesSearched),
+            @"timeMs": @(progress.timeMs)
+        };
+        [progressArray addObject:progressDict];
+    }
+    
+    // Convert result to NSDictionary
+    NSDictionary *resultDict = @{
+        @"bestMove": [NSString stringWithUTF8String:result.bestMove.c_str()],
+        @"score": @(result.score),
+        @"depthCompleted": @(result.depthCompleted),
+        @"nodesSearched": @(result.nodesSearched),
+        @"timedOut": @(result.timedOut),
+        @"totalTimeMs": @(result.totalTimeMs),
+        @"progressHistory": progressArray
+    };
+    
+    return resultDict;
+}
+
 - (NSArray<NSString *> *)getMoveHistory {
     if (!_engine) {
         NSLog(@"ChessEngineWrapper: Engine is null in getMoveHistory");

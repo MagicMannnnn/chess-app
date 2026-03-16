@@ -541,5 +541,70 @@ SearchResult Search::findBestMove(
     return finalResult;
 }
 
+SearchResult Search::findBestMoveAtDepth(
+    Board& board,
+    int depth,
+    int maxTimeMs
+) {
+    SearchResult result;
+    result.depth = depth;
+    result.nodesSearched = 0;
+    
+    // Initialize time control
+    if (maxTimeMs > 0) {
+        auto now = std::chrono::steady_clock::now();
+        startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()
+        ).count();
+        maxSearchTimeMs = maxTimeMs;
+    } else {
+        maxSearchTimeMs = 0;
+    }
+    
+    if (depth < 1) depth = 1;
+    if (depth > 20) depth = 20;
+    
+    std::vector<Move> legalMoves = board.generateLegalMoves();
+    
+    if (legalMoves.empty()) {
+        return result; // No legal moves
+    }
+    
+    bool timeUp = false;
+    int bestScore = -INFINITY_SCORE;
+    Move bestMove;
+    
+    // Use full alpha-beta window
+    int alpha = -INFINITY_SCORE;
+    int beta = INFINITY_SCORE;
+    
+    // Order moves (transposition table entries from previous depths will help)
+    Move emptyMove;
+    orderMoves(board, legalMoves, 0, emptyMove);
+    
+    // Search at exactly this depth
+    for (const Move& move : legalMoves) {
+        board.makeMove(move);
+        int score = minimax(board, depth - 1, alpha, beta, false, result.nodesSearched, 1, timeUp);
+        board.unmakeMove();
+        
+        if (timeUp) {
+            break;
+        }
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = move;
+        }
+        
+        alpha = std::max(alpha, score);
+    }
+    
+    result.bestMove = bestMove;
+    result.score = bestScore;
+    
+    return result;
+}
+
 } // namespace V1
 } // namespace Chess

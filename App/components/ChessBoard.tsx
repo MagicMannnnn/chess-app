@@ -60,7 +60,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     {
       flipped = false,
       autoFlip = false,
-      searchDepth = 3,
+      searchDepth = 5,
       maxSearchTime,
       isAIEnabled = false,
       aiVersion,
@@ -322,7 +322,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     }
 
     // Compute best move when game state changes
-    // Implement iterative deepening: start at depth 1, then 2, 3... up to searchDepth
+    // Uses new unified search API - iterative deepening happens entirely in engine
     useEffect(() => {
       if (engine.isCheckmate() || engine.isStalemate()) {
         setBestMove('')
@@ -333,89 +333,77 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
       // Reset search complete flag when starting new search
       setSearchComplete(false)
 
-      let cancelled = false
       const playerColor = currentPlayer
-      const startTime = Date.now()
+      const abortController = new AbortController()
 
-      const computeBestMoveIterative = async () => {
+      const computeBestMove = async () => {
         try {
-          let currentBestMove = ''
+          console.log(
+            `ChessBoard: Starting search with maxDepth=${searchDepth}, maxTime=${maxSearchTime}ms`,
+          )
 
-          // Iterative deepening: search from depth 1 to searchDepth
-          for (let depth = 1; depth <= searchDepth; depth++) {
-            if (cancelled) break
+          // Call the new unified search API
+          // Iterative deepening happens inside the engine with full time budget
+          const result = await engine.searchBestMove({
+            maxDepth: searchDepth,
+            maxTimeMs: maxSearchTime || 0,
+            aiVersion: aiVersion || settings.aiVersion,
+            signal: abortController.signal,
+            onProgress: (progress) => {
+              // Update UI after each completed depth
+              if (!abortController.signal.aborted && progress.bestMove) {
+                setBestMove(progress.bestMove)
 
-            // Check if we've exceeded the time limit before starting this depth
-            if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
-              console.log(`ChessBoard: Time limit reached before depth ${depth}`)
-              break
-            }
+                // Notify parent of best move change
+                const moveCallback = onBestMoveChangeRef.current
+                if (moveCallback) {
+                  moveCallback(progress.bestMove)
+                }
 
-            // Calculate remaining time budget for this depth search
-            const remainingTime = maxSearchTime ? maxSearchTime - (Date.now() - startTime) : 0
-            if (maxSearchTime && remainingTime <= 0) {
-              console.log(`ChessBoard: No time remaining before depth ${depth}`)
-              break
-            }
+                // Update evaluation (from white's perspective)
+                const evalCallback = onEvaluationChangeRef.current
+                if (evalCallback) {
+                  const whiteEvaluation =
+                    playerColor === Color.BLACK ? -progress.score : progress.score
+                  evalCallback(whiteEvaluation, progress.depth)
+                }
 
-            // Get best move at current depth with remaining time budget
-            const move = await engine.getBestMove(
-              depth,
-              remainingTime,
-              aiVersion || settings.aiVersion,
-            )
-
-            if (cancelled) break
-
-            if (move) {
-              currentBestMove = move
-              setBestMove(move)
-
-              // Notify parent of best move change
-              const moveCallback = onBestMoveChangeRef.current
-              if (moveCallback) {
-                moveCallback(move)
+                console.log(
+                  `ChessBoard: Depth ${progress.depth} complete, best move: ${progress.bestMove}, ` +
+                    `score: ${progress.score}, nodes: ${progress.nodesSearched}, time: ${progress.timeMs}ms`,
+                )
               }
+            },
+          })
 
-              // Update evaluation (from white's perspective)
-              const evalCallback = onEvaluationChangeRef.current
-              if (evalCallback) {
-                const evaluation = engine.evaluatePosition()
-                const whiteEvaluation = playerColor === Color.BLACK ? -evaluation : evaluation
-                evalCallback(whiteEvaluation, depth)
-              }
-
-              console.log(
-                `ChessBoard: Depth ${depth} complete, best move: ${move}, time elapsed: ${Date.now() - startTime}ms`,
-              )
-            }
-
-            // Check if we've exceeded the time limit after completing this depth
-            if (maxSearchTime && Date.now() - startTime >= maxSearchTime) {
-              console.log(`ChessBoard: Time limit reached after depth ${depth}`)
-              break
-            }
-          }
-
-          if (!cancelled) {
+          if (!abortController.signal.aborted) {
             console.log(
-              `ChessBoard: ${settings.aiVersion} Search complete, final best move: ${currentBestMove}`,
+              `ChessBoard: Search complete - bestMove: ${result.bestMove}, ` +
+                `depth: ${result.depthCompleted}/${searchDepth}, ` +
+                `nodes: ${result.nodesSearched}, time: ${result.totalTimeMs}ms, ` +
+                `timedOut: ${result.timedOut}, cancelled: ${result.cancelled}`,
             )
+
+            // Ensure final best move is set
+            if (result.bestMove) {
+              setBestMove(result.bestMove)
+            }
+
             setSearchComplete(true)
           }
         } catch (error) {
-          console.error('ChessBoard: getBestMove failed:', error)
-          if (!cancelled) {
+          console.error('ChessBoard: searchBestMove failed:', error)
+          if (!abortController.signal.aborted) {
             setSearchComplete(true)
           }
         }
       }
 
       // Start computing after a short delay
-      const timer = setTimeout(computeBestMoveIterative, 50)
+      const timer = setTimeout(computeBestMove, 50)
 
       return () => {
-        cancelled = true
+        abortController.abort()
         clearTimeout(timer)
       }
     }, [board, searchDepth, maxSearchTime, engine, currentPlayer])

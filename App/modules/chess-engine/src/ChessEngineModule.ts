@@ -5,6 +5,24 @@ export interface PieceInfo {
   color: string
 }
 
+export interface SearchProgressData {
+  depth: number
+  bestMove: string
+  score: number
+  nodesSearched: number
+  timeMs: number
+}
+
+export interface SearchResultData {
+  bestMove: string
+  score: number
+  depthCompleted: number
+  nodesSearched: number
+  timedOut: boolean
+  totalTimeMs: number
+  progressHistory: SearchProgressData[]
+}
+
 export interface ChessEngineModuleInterface {
   newGame(): void
   makeMove(move: string): boolean
@@ -21,6 +39,12 @@ export interface ChessEngineModuleInterface {
   getFEN(): string
   loadFromFEN(fen: string): boolean
   getBestMove(depth: number, maxTimeMs?: number, aiVersion?: 'v1' | 'v2'): Promise<string>
+  getBestMoveAtDepth(depth: number, maxTimeMs?: number, aiVersion?: 'v1' | 'v2'): Promise<string>
+  searchBestMove(
+    maxDepth: number,
+    maxTimeMs?: number,
+    aiVersion?: 'v1' | 'v2',
+  ): Promise<SearchResultData>
   getMoveHistory(): string[]
   canUndo(): boolean
   evaluatePosition(): number

@@ -20,6 +20,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)getFEN;
 - (BOOL)loadFromFEN:(NSString *)fen;
 - (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
+- (NSString *)getBestMoveAtDepth:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
+- (NSDictionary *)searchBestMove:(int)maxDepth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
 - (NSArray<NSString *> *)getMoveHistory;
 - (BOOL)canUndo;
 - (int)evaluatePosition;

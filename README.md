@@ -2,7 +2,20 @@
 
 ## Overview
 
-This is a React Native project using expo
+This is a React Native project using Expo.
+
+## C++ Engine Development
+
+The chess engine is written in C++ and shared between iOS and Android.
+
+**Important**: Always edit C++ files in `/engine/` directory, then sync to modules:
+
+```bash
+cd App
+npm run sync-engine
+```
+
+See [ENGINE_WORKFLOW.md](./ENGINE_WORKFLOW.md) for detailed instructions.
 
 ## License
 

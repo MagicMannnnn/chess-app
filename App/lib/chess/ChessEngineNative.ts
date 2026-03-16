@@ -1,5 +1,6 @@
 import NativeChessEngine from '@/modules/chess-engine'
 
+import type { SearchParams, SearchProgress, SearchResult } from './SearchTypes'
 import { Color, Piece, PieceType } from './types'
 
 export class ChessEngine {
@@ -217,6 +218,20 @@ export class ChessEngine {
     }
   }
 
+  async getBestMoveAtDepth(
+    depth: number,
+    maxTimeMs: number = 0,
+    aiVersion: 'v1' | 'v2' = 'v1',
+  ): Promise<string> {
+    try {
+      if (!this.ensureInitialized()) return ''
+      return await this.nativeEngine!.getBestMoveAtDepth(depth, maxTimeMs, aiVersion)
+    } catch (error) {
+      console.error('ChessEngine: getBestMoveAtDepth failed:', error)
+      return ''
+    }
+  }
+
   getMoveHistory(): string[] {
     try {
       if (!this.ensureInitialized()) return []
@@ -244,6 +259,138 @@ export class ChessEngine {
     } catch (error) {
       console.error('ChessEngine: evaluatePosition failed:', error)
       return 0
+    }
+  }
+
+  /**
+   * New unified search API - performs iterative deepening with real-time updates
+   * Calls engine once per depth for UI responsiveness while maintaining transposition table efficiency
+   */
+  async searchBestMove(params: SearchParams): Promise<SearchResult> {
+    try {
+      if (!this.ensureInitialized()) {
+        return {
+          bestMove: '',
+          score: 0,
+          depthCompleted: 0,
+          nodesSearched: 0,
+          timedOut: false,
+          cancelled: false,
+          totalTimeMs: 0,
+        }
+      }
+
+      const { maxDepth, maxTimeMs, aiVersion, onProgress, signal } = params
+      const startTime = Date.now()
+      let totalNodesSearched = 0
+      let lastBestMove = ''
+      let lastScore = 0
+      let depthCompleted = 0
+      let timedOut = false
+
+      // Check if already cancelled
+      if (signal?.aborted) {
+        return {
+          bestMove: '',
+          score: 0,
+          depthCompleted: 0,
+          nodesSearched: 0,
+          timedOut: false,
+          cancelled: true,
+          totalTimeMs: 0,
+        }
+      }
+
+      // Iterative deepening: call engine once per depth
+      // The C++ transposition table is STATIC and persists across calls
+      // This gives us real-time UI updates AND transposition table efficiency
+      for (let depth = 1; depth <= maxDepth; depth++) {
+        // Check cancellation
+        if (signal?.aborted) {
+          return {
+            bestMove: lastBestMove,
+            score: lastScore,
+            depthCompleted,
+            nodesSearched: totalNodesSearched,
+            timedOut: false,
+            cancelled: true,
+            totalTimeMs: Date.now() - startTime,
+          }
+        }
+
+        // Check time budget
+        const elapsed = Date.now() - startTime
+        if (maxTimeMs > 0 && elapsed >= maxTimeMs) {
+          console.log(`ChessEngine: Time budget exhausted before depth ${depth}`)
+          timedOut = true
+          break
+        }
+
+        // Search at EXACTLY this depth (not 1 to depth)
+        // Uses transposition table from previous depths for efficiency
+        const move = await this.nativeEngine!.getBestMoveAtDepth(depth, 0, aiVersion)
+
+        if (!move) {
+          console.log(`ChessEngine: No move found at depth ${depth}`)
+          break
+        }
+
+        // Update best move
+        lastBestMove = move
+        depthCompleted = depth
+
+        // Get evaluation for progress callback
+        const score = this.nativeEngine!.evaluatePosition()
+        lastScore = score
+
+        // Estimate nodes (rough estimate since we don't get exact count per call)
+        totalNodesSearched += Math.pow(35, depth) / 10 // Rough branching factor estimate
+
+        // Report progress immediately after this depth completes
+        if (onProgress) {
+          const progress: SearchProgress = {
+            depth,
+            bestMove: move,
+            score,
+            nodesSearched: totalNodesSearched,
+            timeMs: Date.now() - startTime,
+          }
+          console.log(
+            `ChessEngine: Depth ${depth} complete - move: ${move}, ` +
+              `score: ${score}, time: ${progress.timeMs}ms`,
+          )
+          onProgress(progress)
+        }
+
+        // Check time after depth completes
+        const elapsedAfter = Date.now() - startTime
+        if (maxTimeMs > 0 && elapsedAfter >= maxTimeMs) {
+          console.log(`ChessEngine: Time budget exhausted after depth ${depth}`)
+          timedOut = true
+          break
+        }
+      }
+
+      return {
+        bestMove: lastBestMove,
+        score: lastScore,
+        depthCompleted,
+        nodesSearched: totalNodesSearched,
+        timedOut,
+        cancelled: false,
+        totalTimeMs: Date.now() - startTime,
+      }
+    } catch (error) {
+      console.error('ChessEngine: searchBestMove failed:', error)
+      return {
+        bestMove: '',
+        score: 0,
+        depthCompleted: 0,
+        nodesSearched: 0,
+        timedOut: false,
+        cancelled: false,
+        totalTimeMs: 0,
+      }
     }
   }
 }

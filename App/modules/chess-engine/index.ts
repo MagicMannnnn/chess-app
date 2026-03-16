@@ -7,6 +7,24 @@ export interface PieceInfo {
   color: string
 }
 
+export interface SearchProgressData {
+  depth: number
+  bestMove: string
+  score: number
+  nodesSearched: number
+  timeMs: number
+}
+
+export interface SearchResultData {
+  bestMove: string
+  score: number
+  depthCompleted: number
+  nodesSearched: number
+  timedOut: boolean
+  totalTimeMs: number
+  progressHistory: SearchProgressData[]
+}
+
 export class ChessEngine {
   constructor() {
     console.log('ChessEngine module wrapper: constructor called')
@@ -95,6 +113,22 @@ export class ChessEngine {
     aiVersion: 'v1' | 'v2' = 'v1',
   ): Promise<string> {
     return await ChessEngineModule.getBestMove(depth, maxTimeMs, aiVersion)
+  }
+
+  async getBestMoveAtDepth(
+    depth: number,
+    maxTimeMs: number = 0,
+    aiVersion: 'v1' | 'v2' = 'v1',
+  ): Promise<string> {
+    return await ChessEngineModule.getBestMoveAtDepth(depth, maxTimeMs, aiVersion)
+  }
+
+  async searchBestMove(
+    maxDepth: number,
+    maxTimeMs: number = 0,
+    aiVersion: 'v1' | 'v2' = 'v1',
+  ): Promise<SearchResultData> {
+    return await ChessEngineModule.searchBestMove(maxDepth, maxTimeMs, aiVersion)
   }
 
   getMoveHistory(): string[] {

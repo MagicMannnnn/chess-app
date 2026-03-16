@@ -1,4 +1,5 @@
 import Slider from '@react-native-community/slider'
+import { useRouter } from 'expo-router'
 import { useCallback, useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
@@ -86,7 +87,8 @@ const evaluationStyles = StyleSheet.create({
 
 export default function SandboxScreen() {
   const { settings } = useSettings()
-  const [searchDepth, setSearchDepth] = useState(3)
+  const router = useRouter()
+  const [searchDepth, setSearchDepth] = useState(5)
   const [evaluation, setEvaluation] = useState(0)
   const [evalDepth, setEvalDepth] = useState(0)
   const [moveHistory, setMoveHistory] = useState<string[]>([])
@@ -151,6 +153,16 @@ export default function SandboxScreen() {
       <EvaluationBar score={evaluation} depth={evalDepth} />
 
       <View style={styles.controls}>
+        <TouchableOpacity
+          style={styles.performanceTestButton}
+          onPress={() => {
+            console.log('Navigation button pressed')
+            router.push('/(tabs)/sandbox/performance-test')
+          }}
+        >
+          <Text style={styles.performanceTestButtonText}>🔬 Run Performance Test</Text>
+        </TouchableOpacity>
+
         <View style={styles.controlRow}>
           <Text style={styles.label}>Search Depth: {searchDepth}</Text>
           <Slider
@@ -215,6 +227,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 4,
     gap: 4,
+  },
+  performanceTestButton: {
+    backgroundColor: '#9c27b0',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  performanceTestButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   controlRow: {
     gap: 2,
