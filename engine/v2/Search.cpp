@@ -3,9 +3,49 @@
 #include <vector>
 #include <algorithm>
 #include <chrono>
+#include <array>
 
 namespace Chess {
 namespace V2 {
+
+namespace {
+constexpr int MATE_SCORE = 30000;
+constexpr int TIME_CHECK_MASK = 2047; // check time every 2048 nodes
+
+inline CastlingRights buildCastlingRights(const Board& board) {
+    uint8_t castlingRights = board.getCastlingRights();
+
+    CastlingRights rights;
+    rights.whiteKingSide  = (castlingRights & Chess::CastlingRights::WHITE_KINGSIDE) != 0;
+    rights.whiteQueenSide = (castlingRights & Chess::CastlingRights::WHITE_QUEENSIDE) != 0;
+    rights.blackKingSide  = (castlingRights & Chess::CastlingRights::BLACK_KINGSIDE) != 0;
+    rights.blackQueenSide = (castlingRights & Chess::CastlingRights::BLACK_QUEENSIDE) != 0;
+    return rights;
+}
+
+inline int evaluatePosition(const Board& board) {
+    return EvaluatorV2::evaluate(
+        board,
+        board.getCurrentPlayer(),
+        buildCastlingRights(board),
+        false,
+        false,
+        board.getFullmoveNumber()
+    );
+}
+
+inline int terminalScore(Board& board, int ply) {
+    if (board.isCheckmate()) {
+        return -MATE_SCORE + ply;
+    }
+
+    if (board.isStalemate() || board.isDraw()) {
+        return 0;
+    }
+
+    return evaluatePosition(board);
+}
+} // namespace
 
 // Initialize killer moves array
 std::array<std::array<Move, 2>, Search::MAX_DEPTH> Search::killerMoves = {};
@@ -15,13 +55,15 @@ long long Search::startTimeMs = 0;
 int Search::maxSearchTimeMs = 0;
 
 bool Search::isTimeUp() {
-    if (maxSearchTimeMs <= 0) return false;
-    
+    if (maxSearchTimeMs <= 0) {
+        return false;
+    }
+
     auto now = std::chrono::steady_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         now.time_since_epoch()
     ).count() - startTimeMs;
-    
+
     return elapsed >= maxSearchTimeMs;
 }
 
@@ -33,175 +75,176 @@ int Search::getPieceValue(PieceType type) {
         case PieceType::ROOK:   return 500;
         case PieceType::QUEEN:  return 900;
         case PieceType::KING:   return 20000;
-        default: return 0;
+        default:                return 0;
     }
 }
 
 int Search::getMoveScore(const Board& board, const Move& move, int ply) {
     int score = 0;
-    
-    // MVV-LVA: Most Valuable Victim - Least Valuable Attacker
+
+    if (move.isPromotion()) {
+        score += 9000 + getPieceValue(move.getPromotion());
+    }
+
     if (move.isCapture()) {
         Piece fromPiece = board.getPiece(move.getFrom());
         Piece toPiece = board.getPiece(move.getTo());
-        
-        // Victim value * 10 - attacker value (prioritize capturing valuable pieces with cheap pieces)
-        score = getPieceValue(toPiece.type) * 10 - getPieceValue(fromPiece.type);
-        score += 10000; // Base score for captures
-    }
-    // Promotions are very valuable
-    else if (move.isPromotion()) {
-        score = 9000 + getPieceValue(move.getPromotion());
-    }
-    // Killer moves (moves that caused cutoffs at this depth)
-    else if (ply < MAX_DEPTH) {
+
+        score += 10000;
+        score += getPieceValue(toPiece.type) * 10 - getPieceValue(fromPiece.type);
+    } else if (ply < MAX_DEPTH) {
         if (move == killerMoves[ply][0]) {
-            score = 8000;
+            score += 8000;
         } else if (move == killerMoves[ply][1]) {
-            score = 7000;
+            score += 7000;
         }
     }
-    
+
     return score;
 }
 
 void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply) {
-    // Score and sort moves
-    std::vector<std::pair<int, Move>> scoredMoves;
+    struct ScoredMove {
+        int score;
+        Move move;
+    };
+
+    std::vector<ScoredMove> scoredMoves;
     scoredMoves.reserve(moves.size());
-    
+
     for (const Move& move : moves) {
-        int score = getMoveScore(board, move, ply);
-        scoredMoves.emplace_back(score, move);
+        scoredMoves.push_back({getMoveScore(board, move, ply), move});
     }
-    
-    // Sort by score (highest first)
-    std::sort(scoredMoves.begin(), scoredMoves.end(),
-              [](const auto& a, const auto& b) { return a.first > b.first; });
-    
-    // Update moves vector
-    for (size_t i = 0; i < moves.size(); i++) {
-        moves[i] = scoredMoves[i].second;
+
+    std::sort(
+        scoredMoves.begin(),
+        scoredMoves.end(),
+        [](const ScoredMove& a, const ScoredMove& b) {
+            return a.score > b.score;
+        }
+    );
+
+    for (size_t i = 0; i < moves.size(); ++i) {
+        moves[i] = scoredMoves[i].move;
     }
 }
 
-int Search::minimax(Board& board, int depth, int alpha, int beta, bool maximizing, int& nodesSearched, int ply, bool& timeUp) {
+int Search::minimax(
+    Board& board,
+    int depth,
+    int alpha,
+    int beta,
+    bool maximizing,
+    int& nodesSearched,
+    int ply,
+    bool& timeUp
+) {
     nodesSearched++;
-    
-    // Check time limit
-    if (isTimeUp()) {
+
+    if ((nodesSearched & TIME_CHECK_MASK) == 0 && isTimeUp()) {
         timeUp = true;
-        // Use V2 evaluator
-        uint8_t castlingRights = board.getCastlingRights();
-        CastlingRights rights;
-        rights.whiteKingSide = (castlingRights & Chess::CastlingRights::WHITE_KINGSIDE) != 0;
-        rights.whiteQueenSide = (castlingRights & Chess::CastlingRights::WHITE_QUEENSIDE) != 0;
-        rights.blackKingSide = (castlingRights & Chess::CastlingRights::BLACK_KINGSIDE) != 0;
-        rights.blackQueenSide = (castlingRights & Chess::CastlingRights::BLACK_QUEENSIDE) != 0;
-        
-        return EvaluatorV2::evaluate(board, board.getCurrentPlayer(), rights, false, false,
-                                     board.getFullmoveNumber());
+        return evaluatePosition(board);
     }
-    
-    // Terminal node
-    if (depth == 0 || board.isCheckmate() || board.isStalemate() || board.isDraw()) {
-        // Use V2 material-first evaluation
-        uint8_t castlingRights = board.getCastlingRights();
-        CastlingRights rights;
-        rights.whiteKingSide = (castlingRights & Chess::CastlingRights::WHITE_KINGSIDE) != 0;
-        rights.whiteQueenSide = (castlingRights & Chess::CastlingRights::WHITE_QUEENSIDE) != 0;
-        rights.blackKingSide = (castlingRights & Chess::CastlingRights::BLACK_KINGSIDE) != 0;
-        rights.blackQueenSide = (castlingRights & Chess::CastlingRights::BLACK_QUEENSIDE) != 0;
-        
-        return EvaluatorV2::evaluate(board, board.getCurrentPlayer(), rights, false, false,
-                                     board.getFullmoveNumber());
+
+    if (depth == 0) {
+        return evaluatePosition(board);
     }
-    
+
+    if (board.isDraw()) {
+        return 0;
+    }
+
     std::vector<Move> moves = board.generateLegalMoves();
-    
+
     if (moves.empty()) {
-        // No legal moves - use V2 evaluator
-        uint8_t castlingRights = board.getCastlingRights();
-        CastlingRights rights;
-        rights.whiteKingSide = (castlingRights & Chess::CastlingRights::WHITE_KINGSIDE) != 0;
-        rights.whiteQueenSide = (castlingRights & Chess::CastlingRights::WHITE_QUEENSIDE) != 0;
-        rights.blackKingSide = (castlingRights & Chess::CastlingRights::BLACK_KINGSIDE) != 0;
-        rights.blackQueenSide = (castlingRights & Chess::CastlingRights::BLACK_QUEENSIDE) != 0;
-        
-        return EvaluatorV2::evaluate(board, board.getCurrentPlayer(), rights, false, false,
-                                     board.getFullmoveNumber());
+        return terminalScore(board, ply);
     }
-    
-    // Order moves for better pruning
+
     orderMoves(board, moves, ply);
-    
+
     if (maximizing) {
-        int maxEval = -INFINITY_SCORE;
-        
+        int bestScore = -INFINITY_SCORE;
+
         for (const Move& move : moves) {
             board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, false, nodesSearched, ply + 1, timeUp);
+            const int score = minimax(
+                board,
+                depth - 1,
+                alpha,
+                beta,
+                false,
+                nodesSearched,
+                ply + 1,
+                timeUp
+            );
             board.unmakeMove();
-            
+
             if (timeUp) {
-                return maxEval; // Time up, return best found so far
+                return bestScore == -INFINITY_SCORE ? evaluatePosition(board) : bestScore;
             }
-            
-            if (eval > maxEval) {
-                maxEval = eval;
-                
-                // Store killer move if it caused a cutoff and isn't a capture
-                if (eval >= beta && !move.isCapture() && ply < MAX_DEPTH) {
-                    // Shift killer moves down
+
+            if (score > bestScore) {
+                bestScore = score;
+            }
+
+            if (score > alpha) {
+                alpha = score;
+            }
+
+            if (alpha >= beta) {
+                if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
                     if (killerMoves[ply][0] != move) {
                         killerMoves[ply][1] = killerMoves[ply][0];
                         killerMoves[ply][0] = move;
                     }
                 }
-            }
-            
-            alpha = std::max(alpha, eval);
-            
-            if (beta <= alpha) {
-                break; // Beta cutoff
+                break;
             }
         }
-        
-        return maxEval;
-    } else {
-        int minEval = INFINITY_SCORE;
-        
-        for (const Move& move : moves) {
-            board.makeMove(move);
-            int eval = minimax(board, depth - 1, alpha, beta, true, nodesSearched, ply + 1, timeUp);
-            board.unmakeMove();
-            
-            if (timeUp) {
-                return minEval; // Time up, return best found so far
-            }
-            
-            if (eval < minEval) {
-                minEval = eval;
-                
-                // Store killer move if it caused a cutoff and isn't a capture
-                if (eval <= alpha && !move.isCapture() && ply < MAX_DEPTH) {
-                    // Shift killer moves down
-                    if (killerMoves[ply][0] != move) {
-                        killerMoves[ply][1] = killerMoves[ply][0];
-                        killerMoves[ply][0] = move;
-                    }
-                }
-            }
-            
-            beta = std::min(beta, eval);
-            
-            if (beta <= alpha) {
-                break; // Alpha cutoff
-            }
-        }
-        
-        return minEval;
+
+        return bestScore;
     }
+
+    int bestScore = INFINITY_SCORE;
+
+    for (const Move& move : moves) {
+        board.makeMove(move);
+        const int score = minimax(
+            board,
+            depth - 1,
+            alpha,
+            beta,
+            true,
+            nodesSearched,
+            ply + 1,
+            timeUp
+        );
+        board.unmakeMove();
+
+        if (timeUp) {
+            return bestScore == INFINITY_SCORE ? evaluatePosition(board) : bestScore;
+        }
+
+        if (score < bestScore) {
+            bestScore = score;
+        }
+
+        if (score < beta) {
+            beta = score;
+        }
+
+        if (alpha >= beta) {
+            if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
+                if (killerMoves[ply][0] != move) {
+                    killerMoves[ply][1] = killerMoves[ply][0];
+                    killerMoves[ply][0] = move;
+                }
+            }
+            break;
+        }
+    }
+
+    return bestScore;
 }
 
 SearchResult Search::findBestMove(
@@ -211,8 +254,7 @@ SearchResult Search::findBestMove(
     int maxTimeMs
 ) {
     SearchResult finalResult;
-    
-    // Initialize time control
+
     if (maxTimeMs > 0) {
         auto now = std::chrono::steady_clock::now();
         startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -222,74 +264,89 @@ SearchResult Search::findBestMove(
     } else {
         maxSearchTimeMs = 0;
     }
-    
-    if (maxDepth < 1) maxDepth = 1;
-    if (maxDepth > 20) maxDepth = 20;
-    
-    std::vector<Move> legalMoves = board.generateLegalMoves();
-    
-    if (legalMoves.empty()) {
-        return finalResult; // No legal moves
+
+    if (maxDepth < 1) {
+        maxDepth = 1;
     }
-    
+    if (maxDepth > 20) {
+        maxDepth = 20;
+    }
+
+    std::vector<Move> legalMoves = board.generateLegalMoves();
+
+    if (legalMoves.empty()) {
+        finalResult.depth = 0;
+        finalResult.score = terminalScore(board, 0);
+        finalResult.nodesSearched = 0;
+        return finalResult;
+    }
+
+    finalResult.bestMove = legalMoves.front();
+    finalResult.score = evaluatePosition(board);
+    finalResult.depth = 0;
+    finalResult.nodesSearched = 0;
+
     bool timeUp = false;
-    
-    // Iterative deepening: search depth 1, 2, 3, ... up to maxDepth
-    for (int currentDepth = 1; currentDepth <= maxDepth && !timeUp; currentDepth++) {
+
+    for (int currentDepth = 1; currentDepth <= maxDepth && !timeUp; ++currentDepth) {
         SearchResult result;
         result.depth = currentDepth;
         result.nodesSearched = 0;
-        
+
         int bestScore = -INFINITY_SCORE;
-        Move bestMove;
-        
+        Move bestMove = legalMoves.front();
+
         int alpha = -INFINITY_SCORE;
         int beta = INFINITY_SCORE;
-        
-        // Order moves at root (use previous iteration's best move first)
+
         if (currentDepth > 1 && finalResult.bestMove.isValid()) {
-            // Move the previous best move to the front
             auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
             if (it != legalMoves.end()) {
                 std::rotate(legalMoves.begin(), it, it + 1);
             }
         } else {
-            // First iteration - order moves
             orderMoves(board, legalMoves, 0);
         }
-        
+
         for (const Move& move : legalMoves) {
             board.makeMove(move);
-            int score = minimax(board, currentDepth - 1, alpha, beta, false, result.nodesSearched, 1, timeUp);
+            const int score = minimax(
+                board,
+                currentDepth - 1,
+                alpha,
+                beta,
+                false,
+                result.nodesSearched,
+                1,
+                timeUp
+            );
             board.unmakeMove();
-            
+
             if (timeUp) {
-                // Time is up, stop searching and use the best result we have
-                // from the previous completed depth
                 break;
             }
-            
+
             if (score > bestScore) {
                 bestScore = score;
                 bestMove = move;
             }
-            
-            alpha = std::max(alpha, score);
+
+            if (score > alpha) {
+                alpha = score;
+            }
         }
-        
-        // Only update finalResult if we completed this depth
+
         if (!timeUp) {
             result.bestMove = bestMove;
             result.score = bestScore;
             finalResult = result;
-            
-            // Call progress callback with this depth's result
+
             if (progressCallback) {
                 progressCallback(result);
             }
         }
     }
-    
+
     return finalResult;
 }
 
