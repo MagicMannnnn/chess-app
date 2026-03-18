@@ -1,11 +1,12 @@
+import * as Clipboard from 'expo-clipboard'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 
 import ChessBoard from '@/components/ChessBoard'
 import { theme } from '@/constants/theme'
 import { useSettings } from '@/contexts/SettingsContext'
-import { Color } from '@/lib/chess'
+import { ChessEngine, Color } from '@/lib/chess'
 
 export default function GameScreen() {
   const { settings } = useSettings()
@@ -33,6 +34,82 @@ export default function GameScreen() {
   const [gameOver, setGameOver] = useState(false)
   const [moveCount, setMoveCount] = useState(0)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const engineRef = useRef<ChessEngine | null>(null)
+
+  const handleEngineReady = useCallback((engine: ChessEngine) => {
+    engineRef.current = engine
+  }, [])
+
+  const getResultToken = useCallback((engine: ChessEngine): string => {
+    if (engine.isCheckmate()) {
+      return engine.getCurrentPlayer() === Color.WHITE ? '0-1' : '1-0'
+    }
+
+    if (engine.isStalemate() || engine.isDraw()) {
+      return '1/2-1/2'
+    }
+
+    // Product requirement: treat in-progress games as draws when exporting PGN.
+    return '1/2-1/2'
+  }, [])
+
+  const buildPgn = useCallback(
+    (engine: ChessEngine): string => {
+      const result = getResultToken(engine)
+      const moveHistory = engine.getMoveHistory()
+      const date = new Date()
+      const yyyy = date.getFullYear()
+      const mm = `${date.getMonth() + 1}`.padStart(2, '0')
+      const dd = `${date.getDate()}`.padStart(2, '0')
+
+      const whiteLabel = whitePlayerType === 'ai' ? `AI (${whiteAIVersion})` : 'Human'
+      const blackLabel = blackPlayerType === 'ai' ? `AI (${blackAIVersion})` : 'Human'
+
+      const headers = [
+        '[Event "Chess App Casual Game"]',
+        '[Site "Local App"]',
+        `[Date "${yyyy}.${mm}.${dd}"]`,
+        '[Round "-"]',
+        `[White "${whiteLabel}"]`,
+        `[Black "${blackLabel}"]`,
+        `[Result "${result}"]`,
+      ]
+
+      const moveTextParts: string[] = []
+      for (let i = 0; i < moveHistory.length; i += 2) {
+        const whiteMove = moveHistory[i]
+        const blackMove = moveHistory[i + 1]
+        const fullMove = Math.floor(i / 2) + 1
+        if (blackMove) {
+          moveTextParts.push(`${fullMove}. ${whiteMove} ${blackMove}`)
+        } else {
+          moveTextParts.push(`${fullMove}. ${whiteMove}`)
+        }
+      }
+
+      const moveText = `${moveTextParts.join(' ')} ${result}`.trim()
+      return `${headers.join('\n')}\n\n${moveText}`
+    },
+    [blackAIVersion, blackPlayerType, getResultToken, whiteAIVersion, whitePlayerType],
+  )
+
+  const handleCopyPgn = useCallback(async () => {
+    const engine = engineRef.current
+
+    if (!engine) {
+      Alert.alert('PGN Unavailable', 'Game state is still initializing. Please try again.')
+      return
+    }
+
+    try {
+      const pgn = buildPgn(engine)
+      await Clipboard.setStringAsync(pgn)
+      Alert.alert('PGN Copied', 'Game PGN copied to clipboard.')
+    } catch (error) {
+      console.error('GameScreen: Failed to copy PGN:', error)
+      Alert.alert('Copy Failed', 'Could not copy PGN. Please try again.')
+    }
+  }, [buildPgn])
 
   const handleCurrentPlayerChange = useCallback(
     (player: Color) => {
@@ -107,6 +184,10 @@ export default function GameScreen() {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.copyPgnButton} onPress={handleCopyPgn}>
+          <Text style={styles.copyPgnButtonText}>Copy PGN</Text>
+        </TouchableOpacity>
       </View>
 
       {useChessClock && (
@@ -152,6 +233,7 @@ export default function GameScreen() {
         isAIEnabled={isAITurn && !gameOver}
         aiVersion={currentAIVersion}
         onCurrentPlayerChange={handleCurrentPlayerChange}
+        onEngineReady={handleEngineReady}
         hideBestMove
         useChessClock={useChessClock}
         clockTimeMinutes={clockTimeMinutes}
@@ -165,6 +247,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 12,
     paddingTop: 24,
     paddingBottom: 6,
@@ -178,6 +263,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   backButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  copyPgnButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#1f2937',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  copyPgnButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',

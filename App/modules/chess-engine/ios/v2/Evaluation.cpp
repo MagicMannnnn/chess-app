@@ -34,14 +34,14 @@ constexpr int PAWN_PST[8][8] = {
 };
 
 constexpr int KNIGHT_PST[8][8] = {
-    { -38, -24, -14, -12, -12, -14, -24, -38 },
-    { -24,  -8,   2,   4,   4,   2,  -8, -24 },
-    { -14,   4,  12,  16,  16,  12,   4, -14 },
-    { -12,   6,  16,  22,  22,  16,   6, -12 },
-    { -12,   6,  16,  22,  22,  16,   6, -12 },
-    { -14,   4,  12,  16,  16,  12,   4, -14 },
-    { -24,  -8,   2,   4,   4,   2,  -8, -24 },
-    { -38, -24, -14, -12, -12, -14, -24, -38 }
+    { -40, -26, -16, -12, -12, -16, -26, -40 },
+    { -26, -10,   0,   4,   4,   0, -10, -26 },
+    { -16,   4,  12,  18,  18,  12,   4, -16 },
+    { -12,   8,  18,  24,  24,  18,   8, -12 },
+    { -12,   8,  18,  24,  24,  18,   8, -12 },
+    { -16,   4,  12,  18,  18,  12,   4, -16 },
+    { -26, -10,   0,   4,   4,   0, -10, -26 },
+    { -40, -26, -16, -12, -12, -16, -26, -40 }
 };
 
 constexpr int BISHOP_PST[8][8] = {
@@ -129,6 +129,10 @@ inline bool isCoreCenterSquare(int row, int col) {
 
 inline bool isExtendedCenterSquare(int row, int col) {
     return row >= 2 && row <= 5 && col >= 2 && col <= 5;
+}
+
+inline bool isKnightRimSquare(int col) {
+    return col == 0 || col == 7;
 }
 
 int countPiecesExcludingKings(const Board& board) {
@@ -356,12 +360,40 @@ bool attacksSquare(const Board& board, int fromRow, int fromCol, Piece piece, in
         }
 
         case PieceType::QUEEN: {
+            if (dr == 0 && dc == 0) {
+                return false;
+            }
+
             if (dr == 0 || dc == 0) {
-                return attacksSquare(board, fromRow, fromCol, Piece(PieceType::ROOK, piece.color), targetRow, targetCol);
+                const int stepR = (dr == 0) ? 0 : ((dr > 0) ? 1 : -1);
+                const int stepC = (dc == 0) ? 0 : ((dc > 0) ? 1 : -1);
+                int r = fromRow + stepR;
+                int c = fromCol + stepC;
+                while (r != targetRow || c != targetCol) {
+                    if (!board.getPiece(r, c).isEmpty()) {
+                        return false;
+                    }
+                    r += stepR;
+                    c += stepC;
+                }
+                return true;
             }
+
             if (std::abs(dr) == std::abs(dc)) {
-                return attacksSquare(board, fromRow, fromCol, Piece(PieceType::BISHOP, piece.color), targetRow, targetCol);
+                const int stepR = (dr > 0) ? 1 : -1;
+                const int stepC = (dc > 0) ? 1 : -1;
+                int r = fromRow + stepR;
+                int c = fromCol + stepC;
+                while (r != targetRow && c != targetCol) {
+                    if (!board.getPiece(r, c).isEmpty()) {
+                        return false;
+                    }
+                    r += stepR;
+                    c += stepC;
+                }
+                return true;
             }
+
             return false;
         }
 
@@ -405,7 +437,7 @@ int evaluatePieceSquareTables(const Board& board, Color color, bool endgame) {
             score += pieceSquareValue(p.type, color, r, c, endgame);
 
             if ((p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) &&
-                r >= 2 && r <= 5 && c >= 2 && c <= 5) {
+                isExtendedCenterSquare(r, c)) {
                 score += 4;
             }
 
@@ -419,9 +451,7 @@ int evaluatePieceSquareTables(const Board& board, Color color, bool endgame) {
     return score;
 }
 
-int evaluateCenterControlInternal(const Board& board, Color color, bool endgame) {
-    (void)endgame;
-
+int evaluateCenterControlInternal(const Board& board, Color color) {
     int score = 0;
     const Color enemy = enemyOf(color);
 
@@ -439,21 +469,13 @@ int evaluateCenterControlInternal(const Board& board, Color color, bool endgame)
     for (const auto& sq : coreCenter) {
         const int r = sq[0];
         const int c = sq[1];
-
         const Piece occupant = board.getPiece(r, c);
+
         if (!occupant.isEmpty()) {
             if (occupant.color == color) {
-                if (occupant.type == PieceType::PAWN) {
-                    score += 20;
-                } else {
-                    score += 10;
-                }
+                score += (occupant.type == PieceType::PAWN) ? 22 : 10;
             } else {
-                if (occupant.type == PieceType::PAWN) {
-                    score -= 20;
-                } else {
-                    score -= 10;
-                }
+                score -= (occupant.type == PieceType::PAWN) ? 22 : 10;
             }
         }
 
@@ -466,22 +488,22 @@ int evaluateCenterControlInternal(const Board& board, Color color, bool endgame)
     for (const auto& sq : extendedCenter) {
         const int r = sq[0];
         const int c = sq[1];
-
         const Piece occupant = board.getPiece(r, c);
+
         if (!occupant.isEmpty()) {
             if (occupant.color == color) {
                 if (occupant.type == PieceType::PAWN) {
-                    score += 6;
+                    score += 8;
                 } else if (occupant.type == PieceType::KNIGHT || occupant.type == PieceType::BISHOP) {
-                    score += 5;
+                    score += 6;
                 } else {
                     score += 2;
                 }
             } else {
                 if (occupant.type == PieceType::PAWN) {
-                    score -= 6;
+                    score -= 8;
                 } else if (occupant.type == PieceType::KNIGHT || occupant.type == PieceType::BISHOP) {
-                    score -= 5;
+                    score -= 6;
                 } else {
                     score -= 2;
                 }
@@ -517,7 +539,7 @@ int evaluatePieceSupportInternal(const Board& board, Color color, bool endgame) 
                 }
 
                 if (isCoreCenterSquare(r, c) && defenders > 0) {
-                    score += 8;
+                    score += 10;
                 } else if (isExtendedCenterSquare(r, c) && defenders > 0) {
                     score += 4;
                 }
@@ -527,9 +549,9 @@ int evaluatePieceSupportInternal(const Board& board, Color color, bool endgame) 
                 }
             } else if (p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) {
                 if (defenders > 0) {
-                    score += 6;
+                    score += 7;
                 } else if (!endgame) {
-                    score -= 6;
+                    score -= 8;
                 }
 
                 if (isExtendedCenterSquare(r, c) && defenders > 0) {
@@ -537,7 +559,7 @@ int evaluatePieceSupportInternal(const Board& board, Color color, bool endgame) 
                 }
 
                 if (attackers > defenders) {
-                    score -= 12;
+                    score -= 14;
                 }
             } else if (p.type == PieceType::ROOK || p.type == PieceType::QUEEN) {
                 if (defenders > 0) {
@@ -621,7 +643,6 @@ int evaluatePawnStructureInternal(
             if (isPassedPawn(board, color, r, c)) {
                 int bonus = passedPawnBonus(color, r, endgame);
 
-                // Edge passed pawns are often overrated early.
                 if (!endgame) {
                     if (isEdgeFile(c)) {
                         bonus = (bonus * 45) / 100;
@@ -650,7 +671,6 @@ int evaluatePawnStructureInternal(
                 score += 5;
             }
 
-            // Stronger discouragement for early flank pawn pushes.
             if (!endgame && moveCount <= 18) {
                 const int advance = pawnAdvance(color, r);
 
@@ -669,7 +689,6 @@ int evaluatePawnStructureInternal(
                     }
                 }
 
-                // If central structure is still weak, flank pushes are even less desirable.
                 if (centralPawnCount < 2 && (isEdgeFile(c) || isNearEdgeFile(c)) && advance >= 1) {
                     score -= 8;
                 }
@@ -677,8 +696,80 @@ int evaluatePawnStructureInternal(
         }
     }
 
-    // Encourage actually having central pawns.
     score += centralPawnCount * 12;
+    return score;
+}
+
+int evaluateKingSafetyInternal(
+    const Board& board,
+    Color color,
+    bool endgame,
+    int moveCount,
+    const CastlingRights& castling,
+    bool hasCastled
+) {
+    if (endgame) {
+        return 0;
+    }
+
+    int score = 0;
+    Position king = EvaluatorV2::findKing(board, color);
+    if (!king.isValid()) {
+        return 0;
+    }
+
+    const int kr = static_cast<int>(king.row);
+    const int kc = static_cast<int>(king.col);
+
+    const int homeRow = (color == Color::WHITE) ? 0 : 7;
+    const bool stillHasCastlingRights =
+        (color == Color::WHITE)
+            ? (castling.whiteKingSide || castling.whiteQueenSide)
+            : (castling.blackKingSide || castling.blackQueenSide);
+
+    if (hasCastled) {
+        score += 35;
+    } else {
+        if (moveCount < 18 && stillHasCastlingRights) {
+            score += 8;
+        }
+
+        if (moveCount >= 6) {
+            if (kr != homeRow) {
+                score -= 28 + (moveCount < 16 ? 12 : 0);
+            }
+
+            if (kc == 3 || kc == 4) {
+                score -= 22;
+            }
+
+            if (kr != homeRow && (kc == 3 || kc == 4)) {
+                score -= 18;
+            }
+        }
+    }
+
+    // Basic pawn shield for castled / castling-side kings.
+    if ((color == Color::WHITE && kr == 0) || (color == Color::BLACK && kr == 7)) {
+        const int shieldRow = (color == Color::WHITE) ? 1 : 6;
+
+        int shieldBonus = 0;
+        for (int dc = -1; dc <= 1; ++dc) {
+            const int file = kc + dc;
+            if (file < 0 || file > 7) {
+                continue;
+            }
+
+            Piece p = board.getPiece(shieldRow, file);
+            if (!p.isEmpty() && p.color == color && p.type == PieceType::PAWN) {
+                shieldBonus += 8;
+            } else {
+                shieldBonus -= 6;
+            }
+        }
+
+        score += shieldBonus;
+    }
 
     return score;
 }
@@ -725,8 +816,8 @@ int EvaluatorV2::evaluate(
     score += evaluatePieceSquareTables(board, aiColor, endgame);
     score -= evaluatePieceSquareTables(board, oppColor, endgame);
 
-    score += evaluateCenterControlInternal(board, aiColor, endgame);
-    score -= evaluateCenterControlInternal(board, oppColor, endgame);
+    score += evaluateCenterControlInternal(board, aiColor);
+    score -= evaluateCenterControlInternal(board, oppColor);
 
     score += evaluatePawnStructureInternal(board, aiColor, endgame, moveCount, aiHasCastled);
     score -= evaluatePawnStructureInternal(board, oppColor, endgame, moveCount, oppHasCastled);
@@ -739,6 +830,9 @@ int EvaluatorV2::evaluate(
 
     score += evaluatePieceSupportInternal(board, aiColor, endgame);
     score -= evaluatePieceSupportInternal(board, oppColor, endgame);
+
+    score += evaluateKingSafetyInternal(board, aiColor, endgame, moveCount, castling, aiHasCastled);
+    score -= evaluateKingSafetyInternal(board, oppColor, endgame, moveCount, castling, oppHasCastled);
 
     if (moveCount < 20 && materialDiff >= -120) {
         const int aiDevelopment = evaluatePieceDevelopment(board, aiColor, moveCount);
@@ -756,9 +850,9 @@ int EvaluatorV2::evaluate(
     }
 
     if (!endgame && materialDiff >= -140) {
-        const int CASTLED_BONUS = 28;
-        const int CASTLING_RIGHTS_BONUS = 7;
-        const int UNCENTRALIZED_KING_PENALTY = 18;
+        const int CASTLED_BONUS = 34;
+        const int CASTLING_RIGHTS_BONUS = 8;
+        const int UNCENTRALIZED_KING_PENALTY = 20;
 
         if (aiHasCastled) {
             score += CASTLED_BONUS;
@@ -1002,6 +1096,10 @@ int EvaluatorV2::evaluatePieceDevelopment(const Board& board, Color color, int m
                     if (isCoreCenterSquare(r, c)) {
                         development += 6;
                     }
+
+                    if (p.type == PieceType::KNIGHT && isKnightRimSquare(c)) {
+                        development -= 18;
+                    }
                 } else if (moveCount > 8) {
                     development -= 12;
                 }
@@ -1050,6 +1148,16 @@ int EvaluatorV2::evaluatePieceDevelopment(const Board& board, Color color, int m
             if (p.type == PieceType::ROOK && moveCount < 12 && !hasCastled) {
                 if (!isPieceOnStartingSquare(p.type, color, pos)) {
                     development -= 22;
+                }
+            }
+
+            if (p.type == PieceType::KING && moveCount < 18 && !hasCastled) {
+                const int homeRow = (color == Color::WHITE) ? 0 : 7;
+                if (r != homeRow) {
+                    development -= 35;
+                }
+                if (c == 3 || c == 4) {
+                    development -= 18;
                 }
             }
         }
@@ -1141,7 +1249,7 @@ int EvaluatorV2::evaluateMobility(const Board& board, Color color, const Castlin
                 continue;
             }
 
-            int attacks = countAttackersToSquare(board, color, targetRow, targetCol);
+            const int attacks = countAttackersToSquare(board, color, targetRow, targetCol);
             if (attacks == 0) {
                 continue;
             }
