@@ -123,11 +123,13 @@ export default function SandboxScreen() {
 
   const handleReset = useCallback(() => {
     if (chessBoardRef.current) {
-      chessBoardRef.current.resetGame()
+      // Reset parent state BEFORE calling resetGame to avoid race conditions
       setMoveHistory([])
       setHistoryIndex(-1)
       setEvaluation(0)
       setEvalDepth(0)
+      // Now reset the board - this will trigger callbacks with fresh state
+      chessBoardRef.current.resetGame()
     }
   }, [])
 

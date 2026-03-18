@@ -572,7 +572,20 @@ SearchResult Search::findBestMoveAtDepth(
 
     int alpha;
     int beta;
+    // Only use aspiration windows if we have a valid lastBestMove from THIS position
+    // Check if lastBestMove is actually a legal move in current position
+    bool canUseAspiration = false;
     if (depth >= 3 && lastBestMove.isValid()) {
+        // Verify lastBestMove is actually legal in this position
+        for (const Move& move : legalMoves) {
+            if (move == lastBestMove) {
+                canUseAspiration = true;
+                break;
+            }
+        }
+    }
+    
+    if (canUseAspiration) {
         alpha = lastBestScore - ASPIRATION_WINDOW;
         beta = lastBestScore + ASPIRATION_WINDOW;
     } else {
@@ -589,7 +602,8 @@ SearchResult Search::findBestMoveAtDepth(
 
     orderMoves(board, legalMoves, 0, rootTtMove);
 
-    if (lastBestMove.isValid()) {
+    // Only use lastBestMove for move ordering if it's valid for this position
+    if (canUseAspiration) {
         auto it = std::find(legalMoves.begin(), legalMoves.end(), lastBestMove);
         if (it != legalMoves.end()) {
             std::rotate(legalMoves.begin(), it, it + 1);

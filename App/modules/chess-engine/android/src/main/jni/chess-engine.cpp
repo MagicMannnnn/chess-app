@@ -183,4 +183,55 @@ Java_expo_modules_chessengine_ChessEngineModule_nativeLoadFromFEN(JNIEnv* env, j
     return result;
 }
 
+JNIEXPORT jstring JNICALL
+Java_expo_modules_chessengine_ChessEngineModule_nativeGetBestMove(JNIEnv* env, jobject thiz, jint depth, jint maxTimeMs, jstring aiVersion) {
+    if (!engine) {
+        engine = new ChessEngine();
+    }
+    const char* versionStr = env->GetStringUTFChars(aiVersion, nullptr);
+    std::string bestMove = engine->getBestMove(depth, maxTimeMs, std::string(versionStr));
+    env->ReleaseStringUTFChars(aiVersion, versionStr);
+    return env->NewStringUTF(bestMove.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_expo_modules_chessengine_ChessEngineModule_nativeGetBestMoveAtDepth(JNIEnv* env, jobject thiz, jint depth, jint maxTimeMs, jstring aiVersion) {
+    if (!engine) {
+        engine = new ChessEngine();
+    }
+    const char* versionStr = env->GetStringUTFChars(aiVersion, nullptr);
+    std::string bestMove = engine->getBestMoveAtDepth(depth, maxTimeMs, std::string(versionStr));
+    env->ReleaseStringUTFChars(aiVersion, versionStr);
+    return env->NewStringUTF(bestMove.c_str());
+}
+
+JNIEXPORT jint JNICALL
+Java_expo_modules_chessengine_ChessEngineModule_nativeEvaluatePosition(JNIEnv* env, jobject thiz) {
+    if (!engine) {
+        engine = new ChessEngine();
+    }
+    return engine->evaluatePosition();
+}
+
+JNIEXPORT jobjectArray JNICALL
+Java_expo_modules_chessengine_ChessEngineModule_nativeGetMoveHistory(JNIEnv* env, jobject thiz) {
+    if (!engine) {
+        engine = new ChessEngine();
+    }
+    // Note: ChessEngine doesn't currently track move history
+    // Return empty array for now
+    jobjectArray result = env->NewObjectArray(0, env->FindClass("java/lang/String"), nullptr);
+    return result;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_expo_modules_chessengine_ChessEngineModule_nativeCanUndo(JNIEnv* env, jobject thiz) {
+    if (!engine) {
+        return false;
+    }
+    // Check if there's any move history to undo
+    // For now, assume we can't undo (would need Board to track history)
+    return false;
+}
+
 } // extern "C"

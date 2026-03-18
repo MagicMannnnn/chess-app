@@ -51,7 +51,20 @@ sync_dir() {
     fi
 }
 
-# Sync Core files
+# Sync Core files to iOS root (for podspec compatibility)
+# iOS podspec includes *.cpp from root, so we sync Core files there
+echo "📁 Syncing Core to iOS root..."
+if [ -d "$ENGINE_ROOT/Core" ]; then
+    rsync -av \
+        --include='*.h' \
+        --include='*.cpp' \
+        --exclude='*' \
+        "$ENGINE_ROOT/Core/" "$IOS_TARGET/"
+    echo "  ✅ iOS Root: $IOS_TARGET/"
+    echo ""
+fi
+
+# Sync Core files to Android (maintaining Core subdirectory)
 sync_dir "$ENGINE_ROOT/Core" "$IOS_TARGET" "$CPP_TARGET" "Core"
 
 # Sync v1 files
@@ -64,5 +77,6 @@ echo "✨ Engine sync complete!"
 echo ""
 echo "Files synced:"
 echo "  Source: ../engine/{Core,v1,v2}"
+echo "  → iOS Root: ./modules/chess-engine/ios/*.{h,cpp} (Core files)"
 echo "  → iOS: ./modules/chess-engine/ios/{Core,v1,v2}"
 echo "  → Android: ./modules/chess-engine/cpp/engine/{Core,v1,v2}"

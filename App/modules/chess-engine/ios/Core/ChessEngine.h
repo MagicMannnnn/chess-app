@@ -57,9 +57,47 @@ public:
     // Move history
     int getMoveCount() const;
     std::string getLastMove() const;
+    std::vector<std::string> getMoveHistory() const;
+    bool canUndo() const;
+    
+    // AI - V1 Simple Minimax / V2 Material-First
+    // depth: maximum search depth (1-20)
+    // maxTimeMs: maximum time in milliseconds (0 = no time limit)
+    // aiVersion: "v1" or "v2" (default: "v1")
+    std::string getBestMove(int depth, int maxTimeMs = 0, const std::string& aiVersion = "v1") const;
+    
+    // Search at exactly one depth (no internal iterative deepening)
+    // Uses transposition table/killer moves from previous searches
+    // For efficient JS-managed iterative deepening
+    std::string getBestMoveAtDepth(int depth, int maxTimeMs = 0, const std::string& aiVersion = "v1") const;
+    
+    int evaluatePosition(const std::string& aiVersion = "v1") const;
+    
+    // Progress data for each depth completed during iterative deepening
+    struct SearchProgressData {
+        int depth;
+        std::string bestMove;
+        int score;
+        int nodesSearched;
+        long long timeMs;
+    };
+    
+    // Comprehensive search result with full iterative deepening data
+    struct SearchResultData {
+        std::string bestMove;
+        int score;
+        int depthCompleted;
+        int nodesSearched;
+        bool timedOut;
+        long long totalTimeMs;
+        std::vector<SearchProgressData> progressHistory;
+    };
+    
+    SearchResultData searchBestMove(int maxDepth, int maxTimeMs, const std::string& aiVersion) const;
     
 private:
     Board board_;
+    std::vector<std::string> moveHistory_;
     
     // Helper methods
     Square parseSquare(const std::string& square) const;

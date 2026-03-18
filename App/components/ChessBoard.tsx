@@ -124,11 +124,25 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         updateGameState()
       },
       resetGame: () => {
-        engine.newGame()
-        setSelectedSquare(null)
-        setLegalMoves([])
-        setIsFlipped(flipped)
-        updateGameState()
+        try {
+          console.log('ChessBoard: resetGame called')
+          engine.newGame()
+          setSelectedSquare(null)
+          setLegalMoves([])
+          setIsFlipped(flipped)
+          setBestMove('')
+          setSearchComplete(false)
+          setLastMoveFrom(null)
+          setLastMoveTo(null)
+          setDraggingSquare(null)
+          setDragPosition(null)
+          setHoveredSquare(null)
+          setCapturedPieces({ white: [], black: [] })
+          updateGameState()
+          console.log('ChessBoard: resetGame complete')
+        } catch (error) {
+          console.error('ChessBoard: resetGame failed:', error)
+        }
       },
     }))
 
@@ -368,10 +382,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
                   evalCallback(whiteEvaluation, progress.depth)
                 }
 
-                console.log(
-                  `ChessBoard: Depth ${progress.depth} complete, best move: ${progress.bestMove}, ` +
-                    `score: ${progress.score}, nodes: ${progress.nodesSearched}, time: ${progress.timeMs}ms`,
-                )
+                // console.log(
+                //   `ChessBoard: Depth ${progress.depth} complete, best move: ${progress.bestMove}, ` +
+                //     `score: ${progress.score}, nodes: ${progress.nodesSearched}, time: ${progress.timeMs}ms`,
+                // )
               }
             },
           })
