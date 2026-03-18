@@ -3,6 +3,7 @@ import ExpoModulesCore
 public class ChessEngineModule: Module {
   private var engine: ChessEngineWrapper?
   private let initLock = NSLock()
+  private let engineQueue = DispatchQueue(label: "com.chessapp.engine.queue", qos: .userInitiated)
   
   public func definition() -> ModuleDefinition {
     Name("ChessEngine")
@@ -35,7 +36,10 @@ public class ChessEngineModule: Module {
         NSLog("ChessEngine: Engine not initialized in newGame")
         return
       }
-      engine.newGame()
+      engine.clearSearchCaches()
+      self.engineQueue.sync {
+        engine.newGame()
+      }
     }
     
     Function("makeMove") { (move: String) -> Bool in
@@ -44,7 +48,10 @@ public class ChessEngineModule: Module {
         NSLog("ChessEngine: Engine not initialized in makeMove")
         return false
       }
-      return engine.makeMove(move)
+      engine.clearSearchCaches()
+      return self.engineQueue.sync {
+        engine.makeMove(move)
+      }
     }
     
     Function("undoMove") {
@@ -53,7 +60,10 @@ public class ChessEngineModule: Module {
         NSLog("ChessEngine: Engine not initialized in undoMove")
         return
       }
-      engine.undoMove()
+      engine.clearSearchCaches()
+      self.engineQueue.sync {
+        engine.undoMove()
+      }
     }
     
     Function("getLegalMoves") { () -> [String] in
@@ -168,7 +178,10 @@ public class ChessEngineModule: Module {
         NSLog("ChessEngine: Engine not initialized in loadFromFEN")
         return false
       }
-      return engine.load(fromFEN: fen)
+      engine.clearSearchCaches()
+      return self.engineQueue.sync {
+        engine.load(fromFEN: fen)
+      }
     }
     
     AsyncFunction("getBestMove") { (depth: Int, maxTimeMs: Int, aiVersion: String, promise: Promise) in
@@ -180,7 +193,7 @@ public class ChessEngineModule: Module {
       }
       
       // Run on background thread to avoid blocking UI
-      DispatchQueue.global(qos: .userInitiated).async {
+      self.engineQueue.async {
         let move = engine.getBestMove(Int32(depth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
         promise.resolve(move)
       }
@@ -195,7 +208,7 @@ public class ChessEngineModule: Module {
       }
       
       // Run on background thread to avoid blocking UI
-      DispatchQueue.global(qos: .userInitiated).async {
+      self.engineQueue.async {
         let move = engine.getBestMove(atDepth: Int32(depth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
         promise.resolve(move)
       }
@@ -218,7 +231,7 @@ public class ChessEngineModule: Module {
       }
       
       // Run on background thread to avoid blocking UI
-      DispatchQueue.global(qos: .userInitiated).async {
+      self.engineQueue.async {
         NSLog("ChessEngine: Starting searchBestMove with maxDepth=\(maxDepth), maxTime=\(maxTimeMs)ms, version=\(aiVersion)")
         let result = engine.searchBestMove(Int32(maxDepth), maxTimeMs: Int32(maxTimeMs), aiVersion: aiVersion)
         NSLog("ChessEngine: Search completed - bestMove=\(result["bestMove"] ?? "none"), depth=\(result["depthCompleted"] ?? 0)")
@@ -261,6 +274,15 @@ public class ChessEngineModule: Module {
         return 0
       }
       return Int(engine.evaluatePosition())
+    }
+
+    Function("clearSearchCaches") {
+      self.ensureInitialized()
+      guard let engine = self.engine else {
+        NSLog("ChessEngine: Engine not initialized in clearSearchCaches")
+        return
+      }
+      engine.clearSearchCaches()
     }
   }
   

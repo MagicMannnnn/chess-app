@@ -111,6 +111,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const onEvaluationChangeRef = useRef(onEvaluationChange)
     const onBestMoveChangeRef = useRef(onBestMoveChange)
     const onCurrentPlayerChangeRef = useRef(onCurrentPlayerChange)
+    const latestSearchIdRef = useRef(0)
     const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
     // Maximize board size - account for header, controls, and clock if present
     const maxBoardSize = Math.min(screenWidth * 0.96, (screenHeight - 180) * 0.96)
@@ -127,6 +128,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         try {
           console.log('ChessBoard: resetGame called')
           engine.newGame()
+          engine.clearSearchCaches()
           setSelectedSquare(null)
           setLegalMoves([])
           setIsFlipped(flipped)
@@ -349,6 +351,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
 
       const playerColor = currentPlayer
       const abortController = new AbortController()
+      const searchId = ++latestSearchIdRef.current
 
       const computeBestMove = async () => {
         try {
@@ -365,7 +368,11 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             signal: abortController.signal,
             onProgress: (progress) => {
               // Update UI after each completed depth
-              if (!abortController.signal.aborted && progress.bestMove) {
+              if (
+                !abortController.signal.aborted &&
+                latestSearchIdRef.current === searchId &&
+                progress.bestMove
+              ) {
                 setBestMove(progress.bestMove)
 
                 // Notify parent of best move change
@@ -390,7 +397,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             },
           })
 
-          if (!abortController.signal.aborted) {
+          if (!abortController.signal.aborted && latestSearchIdRef.current === searchId) {
             console.log(
               `ChessBoard: Search complete - bestMove: ${result.bestMove}, ` +
                 `depth: ${result.depthCompleted}/${searchDepth}, ` +
@@ -399,7 +406,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             )
 
             // Ensure final best move is set
-            if (result.bestMove) {
+            if (!result.cancelled && result.bestMove) {
               setBestMove(result.bestMove)
             }
 
@@ -407,7 +414,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           }
         } catch (error) {
           console.error('ChessBoard: searchBestMove failed:', error)
-          if (!abortController.signal.aborted) {
+          if (!abortController.signal.aborted && latestSearchIdRef.current === searchId) {
             setSearchComplete(true)
           }
         }
@@ -442,6 +449,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         try {
           console.log(`ChessBoard: AI making move: ${bestMove}`)
           if (engine.makeMove(bestMove)) {
+            engine.clearSearchCaches()
             if (autoFlip) {
               setIsFlipped(!isFlipped)
             }
@@ -499,6 +507,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             // Auto-promote to queen for now
             const moveWithPromotion = move + 'q'
             if (engine.makeMove(moveWithPromotion)) {
+              engine.clearSearchCaches()
               if (autoFlip) {
                 setIsFlipped(!isFlipped)
               }
@@ -512,6 +521,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
 
         if (engine.makeMove(move)) {
           console.log('ChessBoard: Move successful:', move)
+          engine.clearSearchCaches()
           if (autoFlip) {
             setIsFlipped(!isFlipped)
           }

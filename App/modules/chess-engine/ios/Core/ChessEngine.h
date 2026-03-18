@@ -94,6 +94,7 @@ public:
     };
     
     SearchResultData searchBestMove(int maxDepth, int maxTimeMs, const std::string& aiVersion) const;
+    void clearSearchCaches();
     
 private:
     Board board_;

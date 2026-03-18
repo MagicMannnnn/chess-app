@@ -25,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSString *> *)getMoveHistory;
 - (BOOL)canUndo;
 - (int)evaluatePosition;
+- (void)clearSearchCaches;
 
 @end
 

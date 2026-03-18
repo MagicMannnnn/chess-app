@@ -1,6 +1,12 @@
 #include "ChessEngine.h"
+
+#if __has_include("../v2/Search.h")
 #include "../v2/Search.h"
 #include "../v2/Evaluation.h"
+#else
+#include "v2/Search.h"
+#include "v2/Evaluation.h"
+#endif
 
 #include <sstream>
 #include <iomanip>
@@ -17,7 +23,6 @@ ChessEngine::ChessEngine() {
 void ChessEngine::newGame() {
     board_.reset();
     moveHistory_.clear();
-    V2::Search::clearCaches();
 }
 
 bool ChessEngine::loadFromFEN(const std::string& fen) {
@@ -25,7 +30,6 @@ bool ChessEngine::loadFromFEN(const std::string& fen) {
 
     if (loaded) {
         moveHistory_.clear();
-        V2::Search::clearCaches();
     }
 
     return loaded;
@@ -36,8 +40,15 @@ std::string ChessEngine::getFEN() const {
 }
 
 bool ChessEngine::makeMove(const std::string& algebraic) {
-    Move move = Move::fromAlgebraic(algebraic);
-    return makeMove(move);
+    std::vector<Move> legalMoves = board_.generateLegalMoves();
+
+    for (const Move& legalMove : legalMoves) {
+        if (legalMove.toAlgebraic() == algebraic) {
+            return makeMove(legalMove);
+        }
+    }
+
+    return false;
 }
 
 bool ChessEngine::makeMove(const Move& move) {
@@ -45,9 +56,6 @@ bool ChessEngine::makeMove(const Move& move) {
 
     if (result) {
         moveHistory_.push_back(move.toAlgebraic());
-
-        // Position changed: invalidate all search state
-        V2::Search::clearCaches();
     }
 
     return result;
@@ -59,9 +67,6 @@ void ChessEngine::undoMove() {
     if (!moveHistory_.empty()) {
         moveHistory_.pop_back();
     }
-
-    // Position changed: invalidate all search state
-    V2::Search::clearCaches();
 }
 
 std::vector<std::string> ChessEngine::getLegalMoves() const {
@@ -94,8 +99,13 @@ std::vector<std::string> ChessEngine::getLegalMovesFrom(const std::string& squar
 }
 
 bool ChessEngine::isMoveLegal(const std::string& algebraic) const {
-    Move move = Move::fromAlgebraic(algebraic);
-    return board_.isLegalMove(move);
+    std::vector<Move> legalMoves = board_.generateLegalMoves();
+    for (const Move& legalMove : legalMoves) {
+        if (legalMove.toAlgebraic() == algebraic) {
+            return true;
+        }
+    }
+    return false;
 }
 
 Color ChessEngine::getCurrentPlayer() const {
@@ -332,8 +342,13 @@ std::string ChessEngine::getBestMove(int depth, int maxTimeMs, const std::string
 std::string ChessEngine::getBestMoveAtDepth(int depth, int maxTimeMs, const std::string& aiVersion) const {
     (void)aiVersion; // API preserved, V2 only internally
 
-    // Fresh top-level search: clear stale TT / killer / history / PV caches
-    V2::Search::clearCaches();
+    // JS-managed iterative deepening starts at depth 1.
+    // Cancel/clear once at depth 1 so each new board state starts fresh,
+    // while depth 2..N can reuse caches from the same top-level search.
+    if (depth <= 1) {
+        V2::Search::cancelActiveSearches();
+        V2::Search::clearCaches();
+    }
 
     Board boardCopy = board_;
     V2::SearchResult result = V2::Search::findBestMoveAtDepth(boardCopy, depth, maxTimeMs);
@@ -423,11 +438,14 @@ ChessEngine::SearchResultData ChessEngine::searchBestMove(
     return finalResult;
 }
 
+void ChessEngine::clearSearchCaches() {
+    // Immediate cancellation request for any in-flight search.
+    // Cache clearing is performed at top-level search entry points.
+    V2::Search::cancelActiveSearches();
+}
+
 int ChessEngine::evaluatePosition(const std::string& aiVersion) const {
     (void)aiVersion; // API preserved, V2 only internally
-
-    // Keep evaluation isolated from any stale search state
-    V2::Search::clearCaches();
 
     V2::CastlingRights rights;
     rights.whiteKingSide  = (board_.getCastlingRights() & CastlingRights::WHITE_KINGSIDE) != 0;

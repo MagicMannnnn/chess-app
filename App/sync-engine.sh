@@ -64,6 +64,18 @@ if [ -d "$ENGINE_ROOT/Core" ]; then
     echo ""
 fi
 
+# Sync Core files to cpp/engine root (this path is also used by native iOS build in this repo)
+echo "📁 Syncing Core to cpp/engine root..."
+if [ -d "$ENGINE_ROOT/Core" ]; then
+    rsync -av \
+        --include='*.h' \
+        --include='*.cpp' \
+        --exclude='*' \
+        "$ENGINE_ROOT/Core/" "$CPP_TARGET/"
+    echo "  ✅ cpp/engine Root: $CPP_TARGET/"
+    echo ""
+fi
+
 # Sync Core files to Android (maintaining Core subdirectory)
 sync_dir "$ENGINE_ROOT/Core" "$IOS_TARGET" "$CPP_TARGET" "Core"
 
@@ -78,5 +90,6 @@ echo ""
 echo "Files synced:"
 echo "  Source: ../engine/{Core,v1,v2}"
 echo "  → iOS Root: ./modules/chess-engine/ios/*.{h,cpp} (Core files)"
+echo "  → cpp/engine Root: ./modules/chess-engine/cpp/engine/*.{h,cpp} (Core files)"
 echo "  → iOS: ./modules/chess-engine/ios/{Core,v1,v2}"
 echo "  → Android: ./modules/chess-engine/cpp/engine/{Core,v1,v2}"

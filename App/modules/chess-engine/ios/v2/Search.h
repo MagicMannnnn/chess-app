@@ -10,6 +10,7 @@
 #include <array>
 #include <unordered_map>
 #include <cstdint>
+#include <atomic>
 
 namespace Chess {
 namespace V2 {
@@ -57,11 +58,17 @@ public:
     // Clear all caches (transposition table, killer moves, etc.)
     static void clearCaches();
 
+    // Request cancellation for any currently running search.
+    // Running searches will observe this and terminate quickly.
+    static void cancelActiveSearches();
+
 private:
     // Time control
     static long long startTimeMs;
     static int maxSearchTimeMs;
     static bool isTimeUp();
+    static std::atomic<uint64_t> activeSearchToken;
+    static thread_local uint64_t localSearchToken;
 
     // Killer moves for move ordering (2 moves per depth)
     static constexpr int MAX_DEPTH = 64;

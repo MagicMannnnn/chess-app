@@ -1,6 +1,7 @@
 #import "ChessEngineWrapper.h"
 #include "ChessEngine.h"
 #include "Move.h"
+#include "v2/Search.h"
 #include <string>
 #include <vector>
 
@@ -276,6 +277,11 @@ using namespace Chess;
         NSLog(@"ChessEngineWrapper: Engine is null in getBestMoveAtDepth");
         return @"";
     }
+    if (depth <= 1) {
+        std::string fen = _engine->getFEN();
+        std::string player = _engine->getCurrentPlayerString();
+        NSLog(@"ChessEngineWrapper: depth1 search FEN=%s currentPlayer=%s", fen.c_str(), player.c_str());
+    }
     std::string versionStr = aiVersion ? [aiVersion UTF8String] : "v1";
     std::string bestMove = _engine->getBestMoveAtDepth(depth, maxTimeMs, versionStr);
     return [NSString stringWithUTF8String:bestMove.c_str()];
@@ -351,6 +357,14 @@ using namespace Chess;
         return 0;
     }
     return _engine->evaluatePosition();
+}
+
+- (void)clearSearchCaches {
+    if (!_engine) {
+        NSLog(@"ChessEngineWrapper: Engine is null in clearSearchCaches");
+        return;
+    }
+    _engine->clearSearchCaches();
 }
 
 @end

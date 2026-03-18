@@ -48,6 +48,7 @@ export interface ChessEngineModuleInterface {
   getMoveHistory(): string[]
   canUndo(): boolean
   evaluatePosition(): number
+  clearSearchCaches(): void
 }
 
 // It loads the native module object from the JSI or falls back to

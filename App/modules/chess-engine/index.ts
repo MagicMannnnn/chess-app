@@ -142,6 +142,15 @@ export class ChessEngine {
   evaluatePosition(): number {
     return ChessEngineModule.evaluatePosition()
   }
+
+  clearSearchCaches(): void {
+    const moduleWithOptionalFn = ChessEngineModule as unknown as {
+      clearSearchCaches?: () => void
+    }
+    if (typeof moduleWithOptionalFn.clearSearchCaches === 'function') {
+      moduleWithOptionalFn.clearSearchCaches()
+    }
+  }
 }
 
 export default ChessEngine

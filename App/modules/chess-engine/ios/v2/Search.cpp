@@ -5,13 +5,15 @@
 #include <chrono>
 #include <array>
 #include <cstdint>
+#include <atomic>
+#include <iostream>
 
 namespace Chess {
 namespace V2 {
 
 namespace {
 constexpr int MATE_SCORE = 30000;
-constexpr int TIME_CHECK_MASK = 2047; // check time every 2048 nodes
+constexpr int TIME_CHECK_MASK = 255; // check time/cancel every 256 nodes
 constexpr int ASPIRATION_WINDOW = 50;
 
 inline CastlingRights buildCastlingRights(const Board& board) {
@@ -73,6 +75,8 @@ std::unordered_map<uint64_t, TranspositionEntry> Search::transpositionTable;
 // Initialize time control variables
 long long Search::startTimeMs = 0;
 int Search::maxSearchTimeMs = 0;
+std::atomic<uint64_t> Search::activeSearchToken {0};
+thread_local uint64_t Search::localSearchToken = 0;
 
 uint64_t Search::hashBoard(const Board& board) {
     // Much cheaper fallback than hashing the FEN string every node.
@@ -126,7 +130,15 @@ void Search::clearCaches() {
     lastBestScore = 0;
 }
 
+void Search::cancelActiveSearches() {
+    activeSearchToken.fetch_add(1, std::memory_order_relaxed);
+}
+
 bool Search::isTimeUp() {
+    if (localSearchToken != activeSearchToken.load(std::memory_order_relaxed)) {
+        return true;
+    }
+
     if (maxSearchTimeMs <= 0) {
         return false;
     }
@@ -400,6 +412,8 @@ SearchResult Search::findBestMove(
 ) {
     SearchResult finalResult;
 
+    localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
+
     if (maxTimeMs > 0) {
         auto now = std::chrono::steady_clock::now();
         startTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -443,10 +457,12 @@ SearchResult Search::findBestMove(
 
         int alpha = -INFINITY_SCORE;
         int beta = INFINITY_SCORE;
+        bool usingAspirationWindow = false;
 
         if (currentDepth >= 3 && finalResult.bestMove.isValid()) {
             alpha = finalResult.score - ASPIRATION_WINDOW;
             beta = finalResult.score + ASPIRATION_WINDOW;
+            usingAspirationWindow = true;
         }
 
         bool needResearch = false;
@@ -501,14 +517,21 @@ SearchResult Search::findBestMove(
                 }
             }
 
-            if (!timeUp && currentDepth >= 3 && finalResult.bestMove.isValid()) {
+            if (
+                !timeUp &&
+                usingAspirationWindow &&
+                currentDepth >= 3 &&
+                finalResult.bestMove.isValid()
+            ) {
                 if (bestScore <= finalResult.score - ASPIRATION_WINDOW) {
                     alpha = -INFINITY_SCORE;
                     beta = INFINITY_SCORE;
+                    usingAspirationWindow = false;
                     needResearch = true;
                 } else if (bestScore >= finalResult.score + ASPIRATION_WINDOW) {
                     alpha = -INFINITY_SCORE;
                     beta = INFINITY_SCORE;
+                    usingAspirationWindow = false;
                     needResearch = true;
                 }
             }
@@ -537,6 +560,9 @@ SearchResult Search::findBestMoveAtDepth(
     int maxTimeMs
 ) {
     SearchResult result;
+
+    localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
+
     result.depth = depth;
     result.nodesSearched = 0;
 
@@ -555,6 +581,19 @@ SearchResult Search::findBestMoveAtDepth(
     }
     if (depth > 20) {
         depth = 20;
+    }
+
+    // Depth 1 marks the beginning of a new JS-managed iterative search.
+    // Reset caches here so each new board position starts from a clean state.
+    if (depth == 1) {
+        clearCaches();
+    }
+
+    if (depth == 1) {
+        std::cout
+            << "V2::Search depth=1 position FEN=" << board.toFEN()
+            << " currentPlayer=" << (board.getCurrentPlayer() == Color::WHITE ? "white" : "black")
+            << std::endl;
     }
 
     std::vector<Move> legalMoves = board.generateLegalMoves();
@@ -585,9 +624,11 @@ SearchResult Search::findBestMoveAtDepth(
         }
     }
     
+    bool usingAspirationWindow = false;
     if (canUseAspiration) {
         alpha = lastBestScore - ASPIRATION_WINDOW;
         beta = lastBestScore + ASPIRATION_WINDOW;
+        usingAspirationWindow = true;
     } else {
         alpha = -INFINITY_SCORE;
         beta = INFINITY_SCORE;
@@ -646,18 +687,20 @@ SearchResult Search::findBestMoveAtDepth(
             }
         }
 
-        if (!timeUp && depth >= 3 && lastBestMove.isValid()) {
+        if (!timeUp && usingAspirationWindow && depth >= 3 && lastBestMove.isValid()) {
             if (bestScore <= lastBestScore - ASPIRATION_WINDOW) {
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
+                usingAspirationWindow = false;
                 needResearch = true;
             } else if (bestScore >= lastBestScore + ASPIRATION_WINDOW) {
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
+                usingAspirationWindow = false;
                 needResearch = true;
             }
         }
-    } while (needResearch);
+    } while (needResearch && !timeUp);
 
     result.bestMove = bestMove;
     result.score = bestScore;
