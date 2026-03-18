@@ -689,11 +689,21 @@ SearchResult Search::findBestMoveAtDepth(
 
         if (!timeUp && usingAspirationWindow && depth >= 3 && lastBestMove.isValid()) {
             if (bestScore <= lastBestScore - ASPIRATION_WINDOW) {
+                std::cout
+                    << "V2::Search aspiration widen depth=" << depth
+                    << " reason=low bestScore=" << bestScore
+                    << " lastBestScore=" << lastBestScore
+                    << std::endl;
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
                 usingAspirationWindow = false;
                 needResearch = true;
             } else if (bestScore >= lastBestScore + ASPIRATION_WINDOW) {
+                std::cout
+                    << "V2::Search aspiration widen depth=" << depth
+                    << " reason=high bestScore=" << bestScore
+                    << " lastBestScore=" << lastBestScore
+                    << std::endl;
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
                 usingAspirationWindow = false;
