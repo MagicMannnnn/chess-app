@@ -75,10 +75,19 @@ export default function GameScreen() {
         `[Result "${result}"]`,
       ]
 
+      const formatMoveForPgn = (move: string): string => {
+        const promotionMatch = move.match(/^([a-h][1-8][a-h][1-8])([qrbn])$/i)
+        if (!promotionMatch) {
+          return move
+        }
+
+        return `${promotionMatch[1]}=${promotionMatch[2].toUpperCase()}`
+      }
+
       const moveTextParts: string[] = []
       for (let i = 0; i < moveHistory.length; i += 2) {
-        const whiteMove = moveHistory[i]
-        const blackMove = moveHistory[i + 1]
+        const whiteMove = formatMoveForPgn(moveHistory[i])
+        const blackMove = moveHistory[i + 1] ? formatMoveForPgn(moveHistory[i + 1]) : undefined
         const fullMove = Math.floor(i / 2) + 1
         if (blackMove) {
           moveTextParts.push(`${fullMove}. ${whiteMove} ${blackMove}`)

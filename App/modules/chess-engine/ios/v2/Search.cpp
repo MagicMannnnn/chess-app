@@ -15,6 +15,9 @@ namespace {
 constexpr int MATE_SCORE = 30000;
 constexpr int TIME_CHECK_MASK = 255; // check time/cancel every 256 nodes
 constexpr int ASPIRATION_WINDOW = 50;
+constexpr int QUIESCENCE_MAX_DEPTH = 8;
+
+thread_local Color rootSearchColor = Color::WHITE;
 
 inline CastlingRights buildCastlingRights(const Board& board) {
     uint8_t castlingRights = board.getCastlingRights();
@@ -46,16 +49,37 @@ inline int evaluatePosition(const Board& board) {
     );
 }
 
+// Convert evaluator score to ROOT side perspective.
+// EvaluatorV2::evaluate(board, board.getCurrentPlayer(), ...) returns score
+// from the side-to-move perspective, but minimax compares moves from the
+// root player's perspective. Without this conversion, leaf scores are
+// inconsistent and the engine can hang pieces / choose nonsense moves.
+inline int evaluateForRoot(const Board& board) {
+    const int stmScore = evaluatePosition(board);
+    return board.getCurrentPlayer() == rootSearchColor ? stmScore : -stmScore;
+}
+
 inline int terminalScore(Board& board, int ply) {
     if (board.isCheckmate()) {
-        return -MATE_SCORE + ply;
+        // Side to move is checkmated.
+        return board.getCurrentPlayer() == rootSearchColor
+            ? (-MATE_SCORE + ply)
+            : (MATE_SCORE - ply);
     }
 
     if (board.isStalemate() || board.isDraw()) {
         return 0;
     }
 
-    return evaluatePosition(board);
+    return evaluateForRoot(board);
+}
+
+inline bool isTacticalMove(const Move& move, bool inCheck) {
+    if (inCheck) {
+        return true;
+    }
+
+    return move.isCapture() || move.isPromotion();
 }
 } // namespace
 
@@ -79,9 +103,7 @@ std::atomic<uint64_t> Search::activeSearchToken {0};
 thread_local uint64_t Search::localSearchToken = 0;
 
 uint64_t Search::hashBoard(const Board& board) {
-    // Much cheaper fallback than hashing the FEN string every node.
-    // This is not as strong as proper Zobrist hashing, but is significantly faster.
-    uint64_t hash = 1469598103934665603ULL; // FNV offset basis
+    uint64_t hash = 1469598103934665603ULL;
 
     for (int r = 0; r < 8; ++r) {
         for (int c = 0; c < 8; ++c) {
@@ -99,7 +121,7 @@ uint64_t Search::hashBoard(const Board& board) {
             value = value * 67ULL + squareCode;
 
             hash ^= value;
-            hash *= 1099511628211ULL; // FNV prime
+            hash *= 1099511628211ULL;
         }
     }
 
@@ -164,7 +186,6 @@ int Search::getPieceValue(PieceType type) {
 }
 
 int Search::getMoveScore(const Board& board, const Move& move, int ply, const Move& ttMove) {
-    // TT move first
     if (ttMove.isValid() && move == ttMove) {
         return 2000000;
     }
@@ -172,15 +193,23 @@ int Search::getMoveScore(const Board& board, const Move& move, int ply, const Mo
     int score = 0;
 
     if (move.isPromotion()) {
-        score += 900000 + getPieceValue(move.getPromotion());
+        score += 1200000 + getPieceValue(move.getPromotion());
     }
 
     if (move.isCapture()) {
         Piece fromPiece = board.getPiece(move.getFrom());
         Piece toPiece = board.getPiece(move.getTo());
 
+        // En passant may capture an "empty" destination square.
+        int capturedValue = getPieceValue(toPiece.type);
+        if (capturedValue == 0 && move.isEnPassant()) {
+            capturedValue = getPieceValue(PieceType::PAWN);
+        }
+
+        const int attackerValue = getPieceValue(fromPiece.type);
+
         score += 1000000;
-        score += getPieceValue(toPiece.type) * 10 - getPieceValue(fromPiece.type);
+        score += capturedValue * 16 - attackerValue;
         return score;
     }
 
@@ -228,6 +257,118 @@ void Search::orderMoves(Board& board, std::vector<Move>& moves, int ply, const M
     }
 }
 
+static int quiescence(
+    Board& board,
+    int alpha,
+    int beta,
+    int& nodesSearched,
+    int ply,
+    bool& timeUp,
+    int qDepth
+) {
+    nodesSearched++;
+
+    if ((nodesSearched & TIME_CHECK_MASK) == 0 && Search::isTimeUp()) {
+        timeUp = true;
+        return evaluateForRoot(board);
+    }
+
+    const bool maximizing = board.getCurrentPlayer() == rootSearchColor;
+    const int standPat = evaluateForRoot(board);
+
+    if (qDepth >= QUIESCENCE_MAX_DEPTH) {
+        return standPat;
+    }
+
+    if (maximizing) {
+        if (standPat >= beta) {
+            return standPat;
+        }
+        if (standPat > alpha) {
+            alpha = standPat;
+        }
+    } else {
+        if (standPat <= alpha) {
+            return standPat;
+        }
+        if (standPat < beta) {
+            beta = standPat;
+        }
+    }
+
+    const bool inCheck = board.isInCheck(board.getCurrentPlayer());
+    std::vector<Move> moves = board.generateLegalMoves();
+
+    std::vector<Move> tacticalMoves;
+    tacticalMoves.reserve(moves.size());
+
+    for (const Move& move : moves) {
+        if (isTacticalMove(move, inCheck)) {
+            tacticalMoves.push_back(move);
+        }
+    }
+
+    if (tacticalMoves.empty()) {
+        return standPat;
+    }
+
+    Search::orderMoves(board, tacticalMoves, std::min(ply, Search::MAX_DEPTH - 1), Move());
+
+    if (maximizing) {
+        int bestScore = standPat;
+
+        for (const Move& move : tacticalMoves) {
+            board.makeMove(move);
+            const int score = quiescence(board, alpha, beta, nodesSearched, ply + 1, timeUp, qDepth + 1);
+            board.unmakeMove();
+
+            if (timeUp) {
+                return bestScore;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+            }
+
+            if (score > alpha) {
+                alpha = score;
+            }
+
+            if (alpha >= beta) {
+                break;
+            }
+        }
+
+        return bestScore;
+    }
+
+    int bestScore = standPat;
+
+    for (const Move& move : tacticalMoves) {
+        board.makeMove(move);
+        const int score = quiescence(board, alpha, beta, nodesSearched, ply + 1, timeUp, qDepth + 1);
+        board.unmakeMove();
+
+        if (timeUp) {
+            return bestScore;
+        }
+
+        if (score < bestScore) {
+            bestScore = score;
+        }
+
+        if (score < beta) {
+            beta = score;
+        }
+
+        if (alpha >= beta) {
+            break;
+        }
+    }
+
+    return bestScore;
+}
+
 int Search::minimax(
     Board& board,
     int depth,
@@ -245,7 +386,7 @@ int Search::minimax(
 
     if ((nodesSearched & TIME_CHECK_MASK) == 0 && isTimeUp()) {
         timeUp = true;
-        return evaluatePosition(board);
+        return evaluateForRoot(board);
     }
 
     const uint64_t hash = hashBoard(board);
@@ -271,10 +412,6 @@ int Search::minimax(
         }
     }
 
-    if (depth == 0) {
-        return evaluatePosition(board);
-    }
-
     if (board.isDraw()) {
         return 0;
     }
@@ -282,6 +419,10 @@ int Search::minimax(
     std::vector<Move> moves = board.generateLegalMoves();
     if (moves.empty()) {
         return terminalScore(board, ply);
+    }
+
+    if (depth == 0) {
+        return quiescence(board, alpha, beta, nodesSearched, ply, timeUp, 0);
     }
 
     orderMoves(board, moves, ply, ttMove);
@@ -305,7 +446,7 @@ int Search::minimax(
             board.unmakeMove();
 
             if (timeUp) {
-                return bestScore == -INFINITY_SCORE ? evaluatePosition(board) : bestScore;
+                return bestScore == -INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
             }
 
             if (score > bestScore) {
@@ -350,7 +491,7 @@ int Search::minimax(
             board.unmakeMove();
 
             if (timeUp) {
-                return bestScore == INFINITY_SCORE ? evaluatePosition(board) : bestScore;
+                return bestScore == INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
             }
 
             if (score < bestScore) {
@@ -413,6 +554,7 @@ SearchResult Search::findBestMove(
     SearchResult finalResult;
 
     localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
+    rootSearchColor = board.getCurrentPlayer();
 
     if (maxTimeMs > 0) {
         auto now = std::chrono::steady_clock::now();
@@ -441,7 +583,7 @@ SearchResult Search::findBestMove(
     }
 
     finalResult.bestMove = legalMoves.front();
-    finalResult.score = evaluatePosition(board);
+    finalResult.score = evaluateForRoot(board);
     finalResult.depth = 0;
     finalResult.nodesSearched = 0;
 
@@ -472,7 +614,6 @@ SearchResult Search::findBestMove(
             bestScore = -INFINITY_SCORE;
             bestMove = legalMoves.front();
 
-            // First order by heuristics/TT
             Move rootTtMove;
             const uint64_t rootHash = hashBoard(board);
             auto ttIt = transpositionTable.find(rootHash);
@@ -481,7 +622,6 @@ SearchResult Search::findBestMove(
             }
             orderMoves(board, legalMoves, 0, rootTtMove);
 
-            // Then strongly prioritize previous iteration PV move
             if (finalResult.bestMove.isValid()) {
                 auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
                 if (it != legalMoves.end()) {
@@ -562,6 +702,7 @@ SearchResult Search::findBestMoveAtDepth(
     SearchResult result;
 
     localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
+    rootSearchColor = board.getCurrentPlayer();
 
     result.depth = depth;
     result.nodesSearched = 0;
@@ -583,17 +724,8 @@ SearchResult Search::findBestMoveAtDepth(
         depth = 20;
     }
 
-    // Depth 1 marks the beginning of a new JS-managed iterative search.
-    // Reset caches here so each new board position starts from a clean state.
     if (depth == 1) {
         clearCaches();
-    }
-
-    if (depth == 1) {
-        std::cout
-            << "V2::Search depth=1 position FEN=" << board.toFEN()
-            << " currentPlayer=" << (board.getCurrentPlayer() == Color::WHITE ? "white" : "black")
-            << std::endl;
     }
 
     std::vector<Move> legalMoves = board.generateLegalMoves();
@@ -604,18 +736,16 @@ SearchResult Search::findBestMoveAtDepth(
     }
 
     result.bestMove = legalMoves.front();
-    result.score = evaluatePosition(board);
+    result.score = evaluateForRoot(board);
 
     int bestScore = -INFINITY_SCORE;
     Move bestMove = legalMoves.front();
 
     int alpha;
     int beta;
-    // Only use aspiration windows if we have a valid lastBestMove from THIS position
-    // Check if lastBestMove is actually a legal move in current position
+
     bool canUseAspiration = false;
     if (depth >= 3 && lastBestMove.isValid()) {
-        // Verify lastBestMove is actually legal in this position
         for (const Move& move : legalMoves) {
             if (move == lastBestMove) {
                 canUseAspiration = true;
@@ -623,7 +753,7 @@ SearchResult Search::findBestMoveAtDepth(
             }
         }
     }
-    
+
     bool usingAspirationWindow = false;
     if (canUseAspiration) {
         alpha = lastBestScore - ASPIRATION_WINDOW;
@@ -643,7 +773,6 @@ SearchResult Search::findBestMoveAtDepth(
 
     orderMoves(board, legalMoves, 0, rootTtMove);
 
-    // Only use lastBestMove for move ordering if it's valid for this position
     if (canUseAspiration) {
         auto it = std::find(legalMoves.begin(), legalMoves.end(), lastBestMove);
         if (it != legalMoves.end()) {
@@ -689,21 +818,11 @@ SearchResult Search::findBestMoveAtDepth(
 
         if (!timeUp && usingAspirationWindow && depth >= 3 && lastBestMove.isValid()) {
             if (bestScore <= lastBestScore - ASPIRATION_WINDOW) {
-                std::cout
-                    << "V2::Search aspiration widen depth=" << depth
-                    << " reason=low bestScore=" << bestScore
-                    << " lastBestScore=" << lastBestScore
-                    << std::endl;
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
                 usingAspirationWindow = false;
                 needResearch = true;
             } else if (bestScore >= lastBestScore + ASPIRATION_WINDOW) {
-                std::cout
-                    << "V2::Search aspiration widen depth=" << depth
-                    << " reason=high bestScore=" << bestScore
-                    << " lastBestScore=" << lastBestScore
-                    << std::endl;
                 alpha = -INFINITY_SCORE;
                 beta = INFINITY_SCORE;
                 usingAspirationWindow = false;

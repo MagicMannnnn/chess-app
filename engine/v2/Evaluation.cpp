@@ -17,11 +17,6 @@ const int EvaluatorV2::PIECE_VALUES[7] = {
 
 namespace {
 
-// -----------------------------------------------------------------------------
-// Lightweight PSTs
-// White perspective; black uses mirrored rows.
-// -----------------------------------------------------------------------------
-
 constexpr int PAWN_PST[8][8] = {
     {  0,  0,  0,  0,  0,  0,  0,  0 },
     {  2,  4,  8, 12, 12,  8,  4,  2 },
@@ -307,12 +302,11 @@ bool attacksSquare(const Board& board, int fromRow, int fromCol, Piece piece, in
     const int dc = targetCol - fromCol;
 
     switch (piece.type) {
-        case PieceType::PAWN: {
+        case PieceType::PAWN:
             if (piece.color == Color::WHITE) {
                 return dr == 1 && (dc == -1 || dc == 1);
             }
             return dr == -1 && (dc == -1 || dc == 1);
-        }
 
         case PieceType::KNIGHT: {
             const int adr = std::abs(dr);
@@ -545,28 +539,39 @@ int evaluatePieceSupportInternal(const Board& board, Color color, bool endgame) 
                 }
 
                 if (attackers > defenders && (isCentralFile(c) || isSemiCentralFile(c))) {
-                    score -= 8;
+                    score -= 10;
                 }
-            } else if (p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) {
+            } else {
                 if (defenders > 0) {
-                    score += 7;
+                    score += 6;
                 } else if (!endgame) {
                     score -= 8;
                 }
 
-                if (isExtendedCenterSquare(r, c) && defenders > 0) {
+                if ((p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) &&
+                    isExtendedCenterSquare(r, c) && defenders > 0) {
                     score += 6;
                 }
 
+                // Material safety first:
+                // if a piece is attacked more than defended, penalize it heavily,
+                // scaled by piece value so hanging queens/rooks are strongly discouraged.
                 if (attackers > defenders) {
-                    score -= 14;
-                }
-            } else if (p.type == PieceType::ROOK || p.type == PieceType::QUEEN) {
-                if (defenders > 0) {
-                    score += 2;
-                }
-                if (attackers > defenders && !endgame) {
-                    score -= 6;
+                    const int pieceValue = EvaluatorV2::PIECE_VALUES[static_cast<int>(p.type)];
+                    int penalty = pieceValue / 12;
+
+                    if (defenders == 0) {
+                        penalty += pieceValue / 10;
+                    }
+
+                    if (!endgame) {
+                        penalty += pieceValue / 18;
+                    }
+
+                    score -= penalty;
+                } else if (attackers > 0 && defenders == attackers) {
+                    // Slight penalty for loose pieces even if not outright hanging.
+                    score -= EvaluatorV2::PIECE_VALUES[static_cast<int>(p.type)] / 40;
                 }
             }
         }
@@ -749,7 +754,6 @@ int evaluateKingSafetyInternal(
         }
     }
 
-    // Basic pawn shield for castled / castling-side kings.
     if ((color == Color::WHITE && kr == 0) || (color == Color::BLACK && kr == 7)) {
         const int shieldRow = (color == Color::WHITE) ? 1 : 6;
 

@@ -62,7 +62,7 @@ public:
     // Running searches will observe this and terminate quickly.
     static void cancelActiveSearches();
 
-private:
+// private:
     // Time control
     static long long startTimeMs;
     static int maxSearchTimeMs;
