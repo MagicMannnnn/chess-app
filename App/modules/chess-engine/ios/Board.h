@@ -5,6 +5,8 @@
 #include "Move.h"
 #include <vector>
 #include <array>
+#include <string>
+#include <unordered_map>
 
 namespace Chess {
 
@@ -54,6 +56,10 @@ private:
     Square enPassantTarget_;
     int halfmoveClock_;  // For fifty-move rule
     int fullmoveNumber_;
+
+    // Position history for threefold repetition detection
+    std::vector<std::string> positionHistory_;
+    std::unordered_map<std::string, int> positionCounts_;
     
     // Move history for unmake
     struct MoveRecord {
@@ -86,6 +92,12 @@ private:
     
     // Find king position
     Square findKing(Color color) const;
+
+    // Threefold repetition helpers
+    std::string getPositionKey() const;
+    void recordCurrentPosition();
+    void removeCurrentPositionRecord();
+    bool isThreefoldRepetition() const;
 };
 
 } // namespace Chess

@@ -318,6 +318,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           status = `Checkmate! ${player === Color.WHITE ? 'Black' : 'White'} wins!`
         } else if (engine.isStalemate()) {
           status = 'Stalemate! Draw.'
+        } else if (engine.isDraw()) {
+          status = 'Draw by repetition.'
         }
 
         setGameStatus(status)
@@ -340,7 +342,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     // Compute best move when game state changes
     // Uses new unified search API - iterative deepening happens entirely in engine
     useEffect(() => {
-      if (engine.isCheckmate() || engine.isStalemate()) {
+      if (engine.isCheckmate() || engine.isStalemate() || engine.isDraw()) {
         setBestMove('')
         setSearchComplete(true)
         return
@@ -436,7 +438,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         !bestMove ||
         !searchComplete ||
         engine.isCheckmate() ||
-        engine.isStalemate()
+        engine.isStalemate() ||
+        engine.isDraw()
       ) {
         return
       }
@@ -464,6 +467,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     }, [isAIEnabled, bestMove, searchComplete, engine, autoFlip, isFlipped, maxSearchTime])
 
     const handleSquarePress = (square: number) => {
+      if (engine.isCheckmate() || engine.isStalemate() || engine.isDraw()) {
+        return
+      }
+
       const piece = board[square]
 
       if (selectedSquare === null) {
@@ -541,8 +548,18 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
 
     const createPiecePanResponder = (square: number, piece: Piece) => {
       return PanResponder.create({
-        onStartShouldSetPanResponder: () => piece.color === currentPlayer,
-        onMoveShouldSetPanResponder: () => piece.color === currentPlayer,
+        onStartShouldSetPanResponder: () => {
+          if (engine.isCheckmate() || engine.isStalemate() || engine.isDraw()) {
+            return false
+          }
+          return piece.color === currentPlayer
+        },
+        onMoveShouldSetPanResponder: () => {
+          if (engine.isCheckmate() || engine.isStalemate() || engine.isDraw()) {
+            return false
+          }
+          return piece.color === currentPlayer
+        },
         onPanResponderGrant: (evt: GestureResponderEvent) => {
           const { pageX, pageY } = evt.nativeEvent
           // Remeasure board position to ensure accuracy

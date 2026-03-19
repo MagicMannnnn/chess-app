@@ -66,8 +66,8 @@ export default function GameScreen() {
       const blackLabel = blackPlayerType === 'ai' ? `AI (${blackAIVersion})` : 'Human'
 
       const headers = [
-        '[Event "Chess App Casual Game"]',
-        '[Site "Local App"]',
+        '[Event "Georges Chess App Game"]',
+        '[Site "Georges App"]',
         `[Date "${yyyy}.${mm}.${dd}"]`,
         '[Round "-"]',
         `[White "${whiteLabel}"]`,

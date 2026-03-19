@@ -1,6 +1,7 @@
 #include "Board.h"
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 
 namespace Chess {
 
@@ -48,6 +49,101 @@ void Board::reset() {
     halfmoveClock_ = 0;
     fullmoveNumber_ = 1;
     moveHistory_.clear();
+    positionHistory_.clear();
+    positionCounts_.clear();
+    recordCurrentPosition();
+}
+
+std::string Board::getPositionKey() const {
+    std::ostringstream key;
+
+    // Board placement
+    for (int row = 7; row >= 0; row--) {
+        int emptyCount = 0;
+        for (int col = 0; col < 8; col++) {
+            Piece p = getPiece(row, col);
+            if (p.isEmpty()) {
+                emptyCount++;
+            } else {
+                if (emptyCount > 0) {
+                    key << emptyCount;
+                    emptyCount = 0;
+                }
+
+                char c;
+                switch (p.type) {
+                    case PieceType::PAWN: c = 'p'; break;
+                    case PieceType::KNIGHT: c = 'n'; break;
+                    case PieceType::BISHOP: c = 'b'; break;
+                    case PieceType::ROOK: c = 'r'; break;
+                    case PieceType::QUEEN: c = 'q'; break;
+                    case PieceType::KING: c = 'k'; break;
+                    default: c = '?'; break;
+                }
+
+                if (p.color == Color::WHITE) {
+                    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                }
+                key << c;
+            }
+        }
+        if (emptyCount > 0) key << emptyCount;
+        if (row > 0) key << '/';
+    }
+
+    // Side to move
+    key << ' ' << (currentPlayer_ == Color::WHITE ? 'w' : 'b');
+
+    // Castling rights
+    key << ' ';
+    if (castlingRights_ == 0) {
+        key << '-';
+    } else {
+        if (castlingRights_ & CastlingRights::WHITE_KINGSIDE) key << 'K';
+        if (castlingRights_ & CastlingRights::WHITE_QUEENSIDE) key << 'Q';
+        if (castlingRights_ & CastlingRights::BLACK_KINGSIDE) key << 'k';
+        if (castlingRights_ & CastlingRights::BLACK_QUEENSIDE) key << 'q';
+    }
+
+    // En passant target
+    key << ' ';
+    if (enPassantTarget_ >= 0) {
+        Position pos(enPassantTarget_);
+        key << static_cast<char>('a' + pos.col) << (pos.row + 1);
+    } else {
+        key << '-';
+    }
+
+    return key.str();
+}
+
+void Board::recordCurrentPosition() {
+    const std::string key = getPositionKey();
+    positionHistory_.push_back(key);
+    positionCounts_[key]++;
+}
+
+void Board::removeCurrentPositionRecord() {
+    if (positionHistory_.empty()) return;
+
+    const std::string& key = positionHistory_.back();
+    auto it = positionCounts_.find(key);
+    if (it != positionCounts_.end()) {
+        it->second--;
+        if (it->second <= 0) {
+            positionCounts_.erase(it);
+        }
+    }
+
+    positionHistory_.pop_back();
+}
+
+bool Board::isThreefoldRepetition() const {
+    if (positionHistory_.empty()) return false;
+
+    const std::string& currentKey = positionHistory_.back();
+    auto it = positionCounts_.find(currentKey);
+    return it != positionCounts_.end() && it->second >= 3;
 }
 
 Piece Board::getPiece(Square sq) const {
@@ -152,12 +248,16 @@ bool Board::makeMove(const Move& move) {
     if (currentPlayer_ == Color::WHITE) {
         fullmoveNumber_++;
     }
+
+    recordCurrentPosition();
     
     return true;
 }
 
 void Board::unmakeMove() {
     if (moveHistory_.empty()) return;
+
+    removeCurrentPositionRecord();
     
     MoveRecord record = moveHistory_.back();
     moveHistory_.pop_back();
@@ -612,6 +712,9 @@ bool Board::isStalemate() const {
 bool Board::isDraw() const {
     // Stalemate
     if (isStalemate()) return true;
+
+    // Threefold repetition
+    if (isThreefoldRepetition()) return true;
     
     // Fifty-move rule
     if (halfmoveClock_ >= 100) return true;
@@ -657,6 +760,7 @@ GameResult Board::getGameResult() const {
     }
     
     if (isStalemate()) return GameResult::DRAW_STALEMATE;
+    if (isThreefoldRepetition()) return GameResult::DRAW_THREEFOLD_REPETITION;
     if (halfmoveClock_ >= 100) return GameResult::DRAW_FIFTY_MOVE;
     if (isDraw()) return GameResult::DRAW_INSUFFICIENT_MATERIAL;
     
@@ -797,6 +901,9 @@ bool Board::fromFEN(const std::string& fen) {
     halfmoveClock_ = halfmove;
     fullmoveNumber_ = fullmove;
     moveHistory_.clear();
+    positionHistory_.clear();
+    positionCounts_.clear();
+    recordCurrentPosition();
     
     return true;
 }
