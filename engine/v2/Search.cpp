@@ -19,8 +19,6 @@ constexpr int ASPIRATION_WINDOW = 50;
 constexpr int QUIESCENCE_MAX_DEPTH = 8;
 constexpr int CHECK_EXTENSION_DEPTH_LIMIT = 1;
 
-thread_local Color rootSearchColor = Color::WHITE;
-
 inline CastlingRights buildCastlingRights(const Board& board) {
     uint8_t castlingRights = board.getCastlingRights();
 
@@ -40,6 +38,7 @@ inline int squareIndex(const Position& pos) {
     return pos.row * 8 + pos.col;
 }
 
+// Always evaluate from side-to-move perspective for negamax.
 inline int evaluatePosition(const Board& board) {
     return EvaluatorV2::evaluate(
         board,
@@ -51,23 +50,21 @@ inline int evaluatePosition(const Board& board) {
     );
 }
 
-inline int evaluateForRoot(const Board& board) {
-    const int stmScore = evaluatePosition(board);
-    return board.getCurrentPlayer() == rootSearchColor ? stmScore : -stmScore;
+// If side to move is checkmated, that is always losing for side to move.
+inline int mateScore(int ply) {
+    return -MATE_SCORE + ply;
 }
 
 inline int terminalScore(Board& board, int ply) {
     if (board.isCheckmate()) {
-        return board.getCurrentPlayer() == rootSearchColor
-            ? (-MATE_SCORE + ply)
-            : (MATE_SCORE - ply);
+        return mateScore(ply);
     }
 
     if (board.isStalemate() || board.isDraw()) {
         return 0;
     }
 
-    return evaluateForRoot(board);
+    return evaluatePosition(board);
 }
 
 inline bool isTacticalMove(const Move& move, bool inCheck) {
@@ -445,40 +442,30 @@ int Search::quiescence(
 
     if ((nodesSearched & TIME_CHECK_MASK) == 0 && Search::isTimeUp()) {
         timeUp = true;
-        return evaluateForRoot(board);
+        return evaluatePosition(board);
     }
 
     if (board.isCheckmate()) {
-        return terminalScore(board, ply);
+        return mateScore(ply);
     }
     if (board.isStalemate() || board.isDraw()) {
         return 0;
     }
 
-    const bool maximizing = board.getCurrentPlayer() == rootSearchColor;
     const bool inCheck = board.isInCheck(board.getCurrentPlayer());
 
     if (qDepth >= QUIESCENCE_MAX_DEPTH) {
-        return evaluateForRoot(board);
+        return evaluatePosition(board);
     }
 
-    const int standPat = evaluateForRoot(board);
+    const int standPat = evaluatePosition(board);
 
     if (!inCheck) {
-        if (maximizing) {
-            if (standPat >= beta) {
-                return standPat;
-            }
-            if (standPat > alpha) {
-                alpha = standPat;
-            }
-        } else {
-            if (standPat <= alpha) {
-                return standPat;
-            }
-            if (standPat < beta) {
-                beta = standPat;
-            }
+        if (standPat >= beta) {
+            return standPat;
+        }
+        if (standPat > alpha) {
+            alpha = standPat;
         }
     }
 
@@ -502,51 +489,23 @@ int Search::quiescence(
 
     Search::orderMoves(board, tacticalMoves, std::min(ply, Search::MAX_DEPTH - 1), Move());
 
-    if (maximizing) {
-        int bestScore = inCheck ? -Search::INFINITY_SCORE : standPat;
-
-        for (const Move& move : tacticalMoves) {
-            board.makeMoveUnchecked(move);
-            const int score = quiescence(board, alpha, beta, nodesSearched, ply + 1, timeUp, qDepth + 1);
-            board.unmakeMoveUnchecked();
-
-            if (timeUp) {
-                return bestScore == -Search::INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
-            }
-
-            if (score > bestScore) {
-                bestScore = score;
-            }
-
-            if (score > alpha) {
-                alpha = score;
-            }
-
-            if (alpha >= beta) {
-                break;
-            }
-        }
-
-        return bestScore;
-    }
-
-    int bestScore = inCheck ? Search::INFINITY_SCORE : standPat;
+    int bestScore = standPat;
 
     for (const Move& move : tacticalMoves) {
         board.makeMoveUnchecked(move);
-        const int score = quiescence(board, alpha, beta, nodesSearched, ply + 1, timeUp, qDepth + 1);
+        const int score = -quiescence(board, -beta, -alpha, nodesSearched, ply + 1, timeUp, qDepth + 1);
         board.unmakeMoveUnchecked();
 
         if (timeUp) {
-            return bestScore == Search::INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
+            return bestScore;
         }
 
-        if (score < bestScore) {
+        if (score > bestScore) {
             bestScore = score;
         }
 
-        if (score < beta) {
-            beta = score;
+        if (score > alpha) {
+            alpha = score;
         }
 
         if (alpha >= beta) {
@@ -567,6 +526,8 @@ int Search::minimax(
     int ply,
     bool& timeUp
 ) {
+    (void)maximizing; // preserved for API compatibility
+
     nodesSearched++;
 
     const int alphaOriginal = alpha;
@@ -574,11 +535,11 @@ int Search::minimax(
 
     if ((nodesSearched & TIME_CHECK_MASK) == 0 && isTimeUp()) {
         timeUp = true;
-        return evaluateForRoot(board);
+        return evaluatePosition(board);
     }
 
     if (board.isCheckmate()) {
-        return terminalScore(board, ply);
+        return mateScore(ply);
     }
     if (board.isStalemate() || board.isDraw()) {
         return 0;
@@ -624,160 +585,82 @@ int Search::minimax(
     orderMoves(board, moves, std::min(ply, MAX_DEPTH - 1), ttMove);
 
     Move bestMove;
-    int bestScore = maximizing ? -INFINITY_SCORE : INFINITY_SCORE;
+    int bestScore = -INFINITY_SCORE;
     bool firstMove = true;
 
-    if (maximizing) {
-        for (const Move& move : moves) {
-            int score;
+    for (const Move& move : moves) {
+        int score;
 
-            board.makeMoveUnchecked(move);
+        board.makeMoveUnchecked(move);
 
-            if (firstMove) {
-                score = minimax(
+        if (firstMove) {
+            score = -minimax(
+                board,
+                effectiveDepth - 1,
+                -beta,
+                -alpha,
+                false,
+                nodesSearched,
+                ply + 1,
+                timeUp
+            );
+            firstMove = false;
+        } else {
+            score = -minimax(
+                board,
+                effectiveDepth - 1,
+                -(alpha + 1),
+                -alpha,
+                false,
+                nodesSearched,
+                ply + 1,
+                timeUp
+            );
+
+            if (!timeUp && score > alpha && score < beta) {
+                score = -minimax(
                     board,
                     effectiveDepth - 1,
-                    alpha,
-                    beta,
+                    -beta,
+                    -alpha,
                     false,
                     nodesSearched,
                     ply + 1,
                     timeUp
                 );
-                firstMove = false;
-            } else {
-                score = minimax(
-                    board,
-                    effectiveDepth - 1,
-                    alpha,
-                    alpha + 1,
-                    false,
-                    nodesSearched,
-                    ply + 1,
-                    timeUp
-                );
-
-                if (!timeUp && score > alpha && score < beta) {
-                    score = minimax(
-                        board,
-                        effectiveDepth - 1,
-                        alpha,
-                        beta,
-                        false,
-                        nodesSearched,
-                        ply + 1,
-                        timeUp
-                    );
-                }
-            }
-
-            board.unmakeMoveUnchecked();
-
-            if (timeUp) {
-                return bestScore == -INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
-            }
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-
-            if (score > alpha) {
-                alpha = score;
-            }
-
-            if (alpha >= beta) {
-                if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
-                    if (killerMoves[ply][0] != move) {
-                        killerMoves[ply][1] = killerMoves[ply][0];
-                        killerMoves[ply][0] = move;
-                    }
-
-                    Position from = move.getFrom();
-                    Position to = move.getTo();
-                    if (from.isValid() && to.isValid()) {
-                        const int side = colorIndex(board.getCurrentPlayer());
-                        historyHeuristic[side][squareIndex(from)][squareIndex(to)] += depth * depth;
-                    }
-                }
-                break;
             }
         }
-    } else {
-        for (const Move& move : moves) {
-            int score;
 
-            board.makeMoveUnchecked(move);
+        board.unmakeMoveUnchecked();
 
-            if (firstMove) {
-                score = minimax(
-                    board,
-                    effectiveDepth - 1,
-                    alpha,
-                    beta,
-                    true,
-                    nodesSearched,
-                    ply + 1,
-                    timeUp
-                );
-                firstMove = false;
-            } else {
-                score = minimax(
-                    board,
-                    effectiveDepth - 1,
-                    beta - 1,
-                    beta,
-                    true,
-                    nodesSearched,
-                    ply + 1,
-                    timeUp
-                );
+        if (timeUp) {
+            return bestScore == -INFINITY_SCORE ? evaluatePosition(board) : bestScore;
+        }
 
-                if (!timeUp && score > alpha && score < beta) {
-                    score = minimax(
-                        board,
-                        effectiveDepth - 1,
-                        alpha,
-                        beta,
-                        true,
-                        nodesSearched,
-                        ply + 1,
-                        timeUp
-                    );
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = move;
+        }
+
+        if (score > alpha) {
+            alpha = score;
+        }
+
+        if (alpha >= beta) {
+            if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
+                if (killerMoves[ply][0] != move) {
+                    killerMoves[ply][1] = killerMoves[ply][0];
+                    killerMoves[ply][0] = move;
+                }
+
+                Position from = move.getFrom();
+                Position to = move.getTo();
+                if (from.isValid() && to.isValid()) {
+                    const int side = colorIndex(board.getCurrentPlayer());
+                    historyHeuristic[side][squareIndex(from)][squareIndex(to)] += depth * depth;
                 }
             }
-
-            board.unmakeMoveUnchecked();
-
-            if (timeUp) {
-                return bestScore == INFINITY_SCORE ? evaluateForRoot(board) : bestScore;
-            }
-
-            if (score < bestScore) {
-                bestScore = score;
-                bestMove = move;
-            }
-
-            if (score < beta) {
-                beta = score;
-            }
-
-            if (alpha >= beta) {
-                if (!move.isCapture() && ply < MAX_DEPTH && move.isValid()) {
-                    if (killerMoves[ply][0] != move) {
-                        killerMoves[ply][1] = killerMoves[ply][0];
-                        killerMoves[ply][0] = move;
-                    }
-
-                    Position from = move.getFrom();
-                    Position to = move.getTo();
-                    if (from.isValid() && to.isValid()) {
-                        const int side = colorIndex(board.getCurrentPlayer());
-                        historyHeuristic[side][squareIndex(from)][squareIndex(to)] += depth * depth;
-                    }
-                }
-                break;
-            }
+            break;
         }
     }
 
@@ -813,7 +696,6 @@ SearchResult Search::findBestMove(
     SearchResult finalResult;
 
     localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
-    rootSearchColor = board.getCurrentPlayer();
 
     if (maxTimeMs > 0) {
         auto now = std::chrono::steady_clock::now();
@@ -852,7 +734,7 @@ SearchResult Search::findBestMove(
     }
 
     finalResult.bestMove = legalMoves.front();
-    finalResult.score = evaluateForRoot(board);
+    finalResult.score = 0;
     finalResult.depth = 0;
     finalResult.nodesSearched = 0;
 
@@ -901,11 +783,11 @@ SearchResult Search::findBestMove(
 
             for (const Move& move : legalMoves) {
                 board.makeMoveUnchecked(move);
-                const int score = minimax(
+                const int score = -minimax(
                     board,
                     currentDepth - 1,
-                    alpha,
-                    beta,
+                    -beta,
+                    -alpha,
                     false,
                     result.nodesSearched,
                     1,
@@ -969,7 +851,6 @@ SearchResult Search::findBestMoveAtDepth(
     SearchResult result;
 
     localSearchToken = activeSearchToken.fetch_add(1, std::memory_order_relaxed) + 1;
-    rootSearchColor = board.getCurrentPlayer();
 
     result.depth = depth;
     result.nodesSearched = 0;
@@ -1011,7 +892,7 @@ SearchResult Search::findBestMoveAtDepth(
     }
 
     result.bestMove = legalMoves.front();
-    result.score = evaluateForRoot(board);
+    result.score = 0;
 
     int bestScore = -INFINITY_SCORE;
     Move bestMove = legalMoves.front();
@@ -1065,11 +946,11 @@ SearchResult Search::findBestMoveAtDepth(
 
         for (const Move& move : legalMoves) {
             board.makeMoveUnchecked(move);
-            const int score = minimax(
+            const int score = -minimax(
                 board,
                 depth - 1,
-                alpha,
-                beta,
+                -beta,
+                -alpha,
                 false,
                 result.nodesSearched,
                 1,

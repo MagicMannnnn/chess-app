@@ -114,7 +114,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const onBestMoveChangeRef = useRef(onBestMoveChange)
     const onCurrentPlayerChangeRef = useRef(onCurrentPlayerChange)
     const latestSearchIdRef = useRef(0)
-    const shouldUpdateSearchStatsRef = useRef(true)
+    const lastSearchResultRef = useRef<{ depth: number; timeMs: number } | null>(null)
     const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
     // Maximize board size - account for header, controls, and clock if present
     const maxBoardSize = Math.min(screenWidth * 0.96, (screenHeight - 180) * 0.96)
@@ -139,7 +139,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           setSearchComplete(false)
           setLastSearchDepth(0)
           setLastSearchTimeMs(0)
-          shouldUpdateSearchStatsRef.current = true
+          lastSearchResultRef.current = null
           setLastMoveFrom(null)
           setLastMoveTo(null)
           setDraggingSquare(null)
@@ -422,10 +422,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
               setBestMove(result.bestMove)
             }
 
-            // Store the completed depth and time (only if this search should update stats)
-            if (shouldUpdateSearchStatsRef.current) {
-              setLastSearchDepth(result.depthCompleted)
-              setLastSearchTimeMs(result.totalTimeMs)
+            // Store the search result for later use (when AI makes the move)
+            lastSearchResultRef.current = {
+              depth: result.depthCompleted,
+              timeMs: result.totalTimeMs,
             }
             setSearchComplete(true)
           }
@@ -468,8 +468,11 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           console.log(`ChessBoard: AI making move: ${bestMove}`)
           if (engine.makeMove(bestMove)) {
             engine.clearSearchCaches()
-            // AI made a move - allow search stats to be updated
-            shouldUpdateSearchStatsRef.current = true
+            // AI made a move - update display with the search stats from this move
+            if (lastSearchResultRef.current) {
+              setLastSearchDepth(lastSearchResultRef.current.depth)
+              setLastSearchTimeMs(lastSearchResultRef.current.timeMs)
+            }
             if (autoFlip) {
               setIsFlipped(!isFlipped)
             }
@@ -532,10 +535,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             const moveWithPromotion = move + 'q'
             if (engine.makeMove(moveWithPromotion)) {
               engine.clearSearchCaches()
-              // Human made a move - clear search stats and skip next search update
+              // Human made a move - clear search stats
               setLastSearchDepth(0)
               setLastSearchTimeMs(0)
-              shouldUpdateSearchStatsRef.current = false
+              lastSearchResultRef.current = null
               if (autoFlip) {
                 setIsFlipped(!isFlipped)
               }
@@ -550,10 +553,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         if (engine.makeMove(move)) {
           console.log('ChessBoard: Move successful:', move)
           engine.clearSearchCaches()
-          // Human made a move - clear search stats and skip next search update
+          // Human made a move - clear search stats
           setLastSearchDepth(0)
           setLastSearchTimeMs(0)
-          shouldUpdateSearchStatsRef.current = false
+          lastSearchResultRef.current = null
           if (autoFlip) {
             setIsFlipped(!isFlipped)
           }
