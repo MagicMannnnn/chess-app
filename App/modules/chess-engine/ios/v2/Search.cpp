@@ -15,9 +15,7 @@ namespace V2 {
 namespace {
 constexpr int MATE_SCORE = 30000;
 constexpr int TIME_CHECK_MASK = 255; // check time/cancel every 256 nodes
-constexpr int ASPIRATION_WINDOW = 50;
 constexpr int QUIESCENCE_MAX_DEPTH = 8;
-constexpr int CHECK_EXTENSION_DEPTH_LIMIT = 1;
 
 inline CastlingRights buildCastlingRights(const Board& board) {
     uint8_t castlingRights = board.getCastlingRights();
@@ -38,7 +36,7 @@ inline int squareIndex(const Position& pos) {
     return pos.row * 8 + pos.col;
 }
 
-// Always evaluate from side-to-move perspective for negamax.
+// Negamax requires evaluation from side-to-move perspective.
 inline int evaluatePosition(const Board& board) {
     return EvaluatorV2::evaluate(
         board,
@@ -50,7 +48,6 @@ inline int evaluatePosition(const Board& board) {
     );
 }
 
-// If side to move is checkmated, that is always losing for side to move.
 inline int mateScore(int ply) {
     return -MATE_SCORE + ply;
 }
@@ -96,179 +93,6 @@ inline bool moveIsImmediateMate(Board& board, const Move& move) {
     const bool mate = board.isCheckmate();
     board.unmakeMove();
     return mate;
-}
-
-inline int localPieceValue(PieceType type) {
-    switch (type) {
-        case PieceType::PAWN:   return 100;
-        case PieceType::KNIGHT: return 320;
-        case PieceType::BISHOP: return 330;
-        case PieceType::ROOK:   return 500;
-        case PieceType::QUEEN:  return 900;
-        case PieceType::KING:   return 20000;
-        default:                return 0;
-    }
-}
-
-bool attacksSquare(const Board& board, int fromRow, int fromCol, Piece piece, int targetRow, int targetCol) {
-    const int dr = targetRow - fromRow;
-    const int dc = targetCol - fromCol;
-
-    switch (piece.type) {
-        case PieceType::PAWN:
-            if (piece.color == Color::WHITE) {
-                return dr == 1 && (dc == -1 || dc == 1);
-            }
-            return dr == -1 && (dc == -1 || dc == 1);
-
-        case PieceType::KNIGHT: {
-            const int adr = std::abs(dr);
-            const int adc = std::abs(dc);
-            return (adr == 2 && adc == 1) || (adr == 1 && adc == 2);
-        }
-
-        case PieceType::BISHOP: {
-            if (std::abs(dr) != std::abs(dc) || dr == 0) {
-                return false;
-            }
-            const int stepR = (dr > 0) ? 1 : -1;
-            const int stepC = (dc > 0) ? 1 : -1;
-            int r = fromRow + stepR;
-            int c = fromCol + stepC;
-            while (r != targetRow && c != targetCol) {
-                if (!board.getPiece(r, c).isEmpty()) {
-                    return false;
-                }
-                r += stepR;
-                c += stepC;
-            }
-            return true;
-        }
-
-        case PieceType::ROOK: {
-            if (dr != 0 && dc != 0) {
-                return false;
-            }
-            if (dr == 0 && dc == 0) {
-                return false;
-            }
-            const int stepR = (dr == 0) ? 0 : ((dr > 0) ? 1 : -1);
-            const int stepC = (dc == 0) ? 0 : ((dc > 0) ? 1 : -1);
-            int r = fromRow + stepR;
-            int c = fromCol + stepC;
-            while (r != targetRow || c != targetCol) {
-                if (!board.getPiece(r, c).isEmpty()) {
-                    return false;
-                }
-                r += stepR;
-                c += stepC;
-            }
-            return true;
-        }
-
-        case PieceType::QUEEN: {
-            if (dr == 0 && dc == 0) {
-                return false;
-            }
-
-            if (dr == 0 || dc == 0) {
-                const int stepR = (dr == 0) ? 0 : ((dr > 0) ? 1 : -1);
-                const int stepC = (dc == 0) ? 0 : ((dc > 0) ? 1 : -1);
-                int r = fromRow + stepR;
-                int c = fromCol + stepC;
-                while (r != targetRow || c != targetCol) {
-                    if (!board.getPiece(r, c).isEmpty()) {
-                        return false;
-                    }
-                    r += stepR;
-                    c += stepC;
-                }
-                return true;
-            }
-
-            if (std::abs(dr) == std::abs(dc)) {
-                const int stepR = (dr > 0) ? 1 : -1;
-                const int stepC = (dc > 0) ? 1 : -1;
-                int r = fromRow + stepR;
-                int c = fromCol + stepC;
-                while (r != targetRow && c != targetCol) {
-                    if (!board.getPiece(r, c).isEmpty()) {
-                        return false;
-                    }
-                    r += stepR;
-                    c += stepC;
-                }
-                return true;
-            }
-
-            return false;
-        }
-
-        case PieceType::KING:
-            return std::max(std::abs(dr), std::abs(dc)) == 1;
-
-        default:
-            return false;
-    }
-}
-
-int countAttackersToSquare(const Board& board, Color color, int targetRow, int targetCol) {
-    int count = 0;
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color) {
-                continue;
-            }
-
-            if (attacksSquare(board, r, c, p, targetRow, targetCol)) {
-                ++count;
-            }
-        }
-    }
-
-    return count;
-}
-
-int rootSafetyPenalty(Board& board, const Move& move) {
-    const Position to = move.getTo();
-    if (!to.isValid()) {
-        return 0;
-    }
-
-    board.makeMove(move);
-
-    const Color enemy = board.getCurrentPlayer();
-    const Color mover = Chess::oppositeColor(enemy);
-
-    if (board.isCheckmate()) {
-        board.unmakeMove();
-        return 0;
-    }
-
-    const Piece landed = board.getPiece(to.row, to.col);
-    if (landed.isEmpty() || landed.color != mover) {
-        board.unmakeMove();
-        return 0;
-    }
-
-    const int attackers = countAttackersToSquare(board, enemy, to.row, to.col);
-    const int defenders = countAttackersToSquare(board, mover, to.row, to.col);
-    const int pieceValue = localPieceValue(landed.type);
-
-    int penalty = 0;
-
-    if (attackers > 0 && defenders == 0) {
-        penalty += pieceValue;
-    } else if (attackers > defenders) {
-        penalty += (pieceValue * 3) / 4;
-    } else if (attackers == defenders && attackers > 0) {
-        penalty += pieceValue / 4;
-    }
-
-    board.unmakeMove();
-    return penalty;
 }
 
 } // namespace
@@ -568,17 +392,12 @@ int Search::minimax(
         }
     }
 
-    int effectiveDepth = depth;
-    if (board.isInCheck(board.getCurrentPlayer()) && depth > 0 && depth <= CHECK_EXTENSION_DEPTH_LIMIT) {
-        ++effectiveDepth;
-    }
-
     std::vector<Move> moves = board.generateLegalMoves();
     if (moves.empty()) {
         return terminalScore(board, ply);
     }
 
-    if (effectiveDepth == 0) {
+    if (depth <= 0) {
         return quiescence(board, alpha, beta, nodesSearched, ply, timeUp, 0);
     }
 
@@ -586,50 +405,20 @@ int Search::minimax(
 
     Move bestMove;
     int bestScore = -INFINITY_SCORE;
-    bool firstMove = true;
 
     for (const Move& move : moves) {
-        int score;
-
         board.makeMoveUnchecked(move);
 
-        if (firstMove) {
-            score = -minimax(
-                board,
-                effectiveDepth - 1,
-                -beta,
-                -alpha,
-                false,
-                nodesSearched,
-                ply + 1,
-                timeUp
-            );
-            firstMove = false;
-        } else {
-            score = -minimax(
-                board,
-                effectiveDepth - 1,
-                -(alpha + 1),
-                -alpha,
-                false,
-                nodesSearched,
-                ply + 1,
-                timeUp
-            );
-
-            if (!timeUp && score > alpha && score < beta) {
-                score = -minimax(
-                    board,
-                    effectiveDepth - 1,
-                    -beta,
-                    -alpha,
-                    false,
-                    nodesSearched,
-                    ply + 1,
-                    timeUp
-                );
-            }
-        }
+        const int score = -minimax(
+            board,
+            depth - 1,
+            -beta,
+            -alpha,
+            false,
+            nodesSearched,
+            ply + 1,
+            timeUp
+        );
 
         board.unmakeMoveUnchecked();
 
@@ -750,77 +539,52 @@ SearchResult Search::findBestMove(
 
         int alpha = -INFINITY_SCORE;
         int beta = INFINITY_SCORE;
-        bool usingAspirationWindow = false;
 
-        if (currentDepth >= 3 && finalResult.bestMove.isValid()) {
-            alpha = finalResult.score - ASPIRATION_WINDOW;
-            beta = finalResult.score + ASPIRATION_WINDOW;
-            usingAspirationWindow = true;
+        Move rootTtMove;
+        const uint64_t rootHash = hashBoard(board);
+        auto ttIt = transpositionTable.find(rootHash);
+        if (ttIt != transpositionTable.end()) {
+            rootTtMove = ttIt->second.bestMove;
         }
 
-        bool needResearch = false;
-        do {
-            needResearch = false;
-            timeUp = false;
-            bestScore = -INFINITY_SCORE;
-            bestMove = legalMoves.front();
+        orderMoves(board, legalMoves, 0, rootTtMove);
 
-            Move rootTtMove;
-            const uint64_t rootHash = hashBoard(board);
-            auto ttIt = transpositionTable.find(rootHash);
-            if (ttIt != transpositionTable.end()) {
-                rootTtMove = ttIt->second.bestMove;
+        if (finalResult.bestMove.isValid()) {
+            auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
+            if (it != legalMoves.end()) {
+                std::rotate(legalMoves.begin(), it, it + 1);
+            }
+        }
+
+        timeUp = false;
+
+        for (const Move& move : legalMoves) {
+            board.makeMoveUnchecked(move);
+            const int score = -minimax(
+                board,
+                currentDepth - 1,
+                -beta,
+                -alpha,
+                false,
+                result.nodesSearched,
+                1,
+                timeUp
+            );
+            board.unmakeMoveUnchecked();
+
+            if (timeUp) {
+                break;
             }
 
-            orderMoves(board, legalMoves, 0, rootTtMove);
-
-            if (finalResult.bestMove.isValid()) {
-                auto it = std::find(legalMoves.begin(), legalMoves.end(), finalResult.bestMove);
-                if (it != legalMoves.end()) {
-                    std::rotate(legalMoves.begin(), it, it + 1);
-                }
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
             }
 
-            for (const Move& move : legalMoves) {
-                board.makeMoveUnchecked(move);
-                const int score = -minimax(
-                    board,
-                    currentDepth - 1,
-                    -beta,
-                    -alpha,
-                    false,
-                    result.nodesSearched,
-                    1,
-                    timeUp
-                );
-                board.unmakeMoveUnchecked();
-
-                if (timeUp) {
-                    break;
-                }
-
-                const int adjustedScore = score - rootSafetyPenalty(board, move);
-
-                if (adjustedScore > bestScore) {
-                    bestScore = adjustedScore;
-                    bestMove = move;
-                }
-
-                if (adjustedScore > alpha) {
-                    alpha = adjustedScore;
-                }
+            if (score > alpha) {
+                alpha = score;
             }
-
-            if (!timeUp && usingAspirationWindow && currentDepth >= 3 && finalResult.bestMove.isValid()) {
-                if (bestScore <= finalResult.score - ASPIRATION_WINDOW ||
-                    bestScore >= finalResult.score + ASPIRATION_WINDOW) {
-                    alpha = -INFINITY_SCORE;
-                    beta = INFINITY_SCORE;
-                    usingAspirationWindow = false;
-                    needResearch = true;
-                }
-            }
-        } while (needResearch && !timeUp);
+        }
 
         if (!timeUp) {
             result.bestMove = bestMove;
@@ -897,28 +661,8 @@ SearchResult Search::findBestMoveAtDepth(
     int bestScore = -INFINITY_SCORE;
     Move bestMove = legalMoves.front();
 
-    int alpha;
-    int beta;
-
-    bool canUseAspiration = false;
-    if (depth >= 3 && lastBestMove.isValid()) {
-        for (const Move& move : legalMoves) {
-            if (move == lastBestMove) {
-                canUseAspiration = true;
-                break;
-            }
-        }
-    }
-
-    bool usingAspirationWindow = false;
-    if (canUseAspiration) {
-        alpha = lastBestScore - ASPIRATION_WINDOW;
-        beta = lastBestScore + ASPIRATION_WINDOW;
-        usingAspirationWindow = true;
-    } else {
-        alpha = -INFINITY_SCORE;
-        beta = INFINITY_SCORE;
-    }
+    int alpha = -INFINITY_SCORE;
+    int beta = INFINITY_SCORE;
 
     Move rootTtMove;
     const uint64_t rootHash = hashBoard(board);
@@ -929,61 +673,42 @@ SearchResult Search::findBestMoveAtDepth(
 
     orderMoves(board, legalMoves, 0, rootTtMove);
 
-    if (canUseAspiration) {
+    if (lastBestMove.isValid()) {
         auto it = std::find(legalMoves.begin(), legalMoves.end(), lastBestMove);
         if (it != legalMoves.end()) {
             std::rotate(legalMoves.begin(), it, it + 1);
         }
     }
 
-    bool needResearch = false;
     bool timeUp = false;
 
-    do {
-        needResearch = false;
-        timeUp = false;
-        bestScore = -INFINITY_SCORE;
+    for (const Move& move : legalMoves) {
+        board.makeMoveUnchecked(move);
+        const int score = -minimax(
+            board,
+            depth - 1,
+            -beta,
+            -alpha,
+            false,
+            result.nodesSearched,
+            1,
+            timeUp
+        );
+        board.unmakeMoveUnchecked();
 
-        for (const Move& move : legalMoves) {
-            board.makeMoveUnchecked(move);
-            const int score = -minimax(
-                board,
-                depth - 1,
-                -beta,
-                -alpha,
-                false,
-                result.nodesSearched,
-                1,
-                timeUp
-            );
-            board.unmakeMoveUnchecked();
-
-            if (timeUp) {
-                break;
-            }
-
-            const int adjustedScore = score - rootSafetyPenalty(board, move);
-
-            if (adjustedScore > bestScore) {
-                bestScore = adjustedScore;
-                bestMove = move;
-            }
-
-            if (adjustedScore > alpha) {
-                alpha = adjustedScore;
-            }
+        if (timeUp) {
+            break;
         }
 
-        if (!timeUp && usingAspirationWindow && depth >= 3 && lastBestMove.isValid()) {
-            if (bestScore <= lastBestScore - ASPIRATION_WINDOW ||
-                bestScore >= lastBestScore + ASPIRATION_WINDOW) {
-                alpha = -INFINITY_SCORE;
-                beta = INFINITY_SCORE;
-                usingAspirationWindow = false;
-                needResearch = true;
-            }
+        if (score > bestScore) {
+            bestScore = score;
+            bestMove = move;
         }
-    } while (needResearch && !timeUp);
+
+        if (score > alpha) {
+            alpha = score;
+        }
+    }
 
     result.bestMove = bestMove;
     result.score = bestScore;
