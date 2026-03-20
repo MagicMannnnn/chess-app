@@ -98,6 +98,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const [hoveredSquare, setHoveredSquare] = useState<number | null>(null)
     const [bestMove, setBestMove] = useState<string>('')
     const [searchComplete, setSearchComplete] = useState(false)
+    const [lastSearchDepth, setLastSearchDepth] = useState<number>(0)
+    const [lastSearchTimeMs, setLastSearchTimeMs] = useState<number>(0)
     const [lastMoveFrom, setLastMoveFrom] = useState<number | null>(null)
     const [lastMoveTo, setLastMoveTo] = useState<number | null>(null)
     const [capturedPieces, setCapturedPieces] = useState<{
@@ -112,6 +114,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const onBestMoveChangeRef = useRef(onBestMoveChange)
     const onCurrentPlayerChangeRef = useRef(onCurrentPlayerChange)
     const latestSearchIdRef = useRef(0)
+    const shouldUpdateSearchStatsRef = useRef(true)
     const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
     // Maximize board size - account for header, controls, and clock if present
     const maxBoardSize = Math.min(screenWidth * 0.96, (screenHeight - 180) * 0.96)
@@ -134,6 +137,9 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           setIsFlipped(flipped)
           setBestMove('')
           setSearchComplete(false)
+          setLastSearchDepth(0)
+          setLastSearchTimeMs(0)
+          shouldUpdateSearchStatsRef.current = true
           setLastMoveFrom(null)
           setLastMoveTo(null)
           setDraggingSquare(null)
@@ -308,6 +314,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         }
 
         let status = `${player === Color.WHITE ? 'White' : 'Black'} to move`
+        if (lastSearchDepth > 0) {
+          const timeInSeconds = (lastSearchTimeMs / 1000).toFixed(1)
+          status += ` (depth ${lastSearchDepth}, ${timeInSeconds}s)`
+        }
 
         console.log('ChessBoard: updateGameState - checking game state')
         if (engine.isInCheck()) {
@@ -412,6 +422,11 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
               setBestMove(result.bestMove)
             }
 
+            // Store the completed depth and time (only if this search should update stats)
+            if (shouldUpdateSearchStatsRef.current) {
+              setLastSearchDepth(result.depthCompleted)
+              setLastSearchTimeMs(result.totalTimeMs)
+            }
             setSearchComplete(true)
           }
         } catch (error) {
@@ -453,6 +468,8 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
           console.log(`ChessBoard: AI making move: ${bestMove}`)
           if (engine.makeMove(bestMove)) {
             engine.clearSearchCaches()
+            // AI made a move - allow search stats to be updated
+            shouldUpdateSearchStatsRef.current = true
             if (autoFlip) {
               setIsFlipped(!isFlipped)
             }
@@ -515,6 +532,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
             const moveWithPromotion = move + 'q'
             if (engine.makeMove(moveWithPromotion)) {
               engine.clearSearchCaches()
+              // Human made a move - clear search stats and skip next search update
+              setLastSearchDepth(0)
+              setLastSearchTimeMs(0)
+              shouldUpdateSearchStatsRef.current = false
               if (autoFlip) {
                 setIsFlipped(!isFlipped)
               }
@@ -529,6 +550,10 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
         if (engine.makeMove(move)) {
           console.log('ChessBoard: Move successful:', move)
           engine.clearSearchCaches()
+          // Human made a move - clear search stats and skip next search update
+          setLastSearchDepth(0)
+          setLastSearchTimeMs(0)
+          shouldUpdateSearchStatsRef.current = false
           if (autoFlip) {
             setIsFlipped(!isFlipped)
           }
@@ -651,7 +676,7 @@ const ChessBoard = React.forwardRef<ChessBoardRef, ChessBoardProps>(
     const renderSquare = (square: number) => {
       const row = Math.floor(square / 8)
       const col = square % 8
-      const isLight = (row + col) % 2 === 0
+      const isLight = (row + col) % 2 === 1
       const isSelected = selectedSquare === square
       const isLegal = isSquareLegalMove(square)
       const isHovered = hoveredSquare === square

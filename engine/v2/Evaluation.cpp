@@ -1,5 +1,6 @@
 #include "Evaluation.h"
 #include <algorithm>
+#include <cmath>
 
 namespace Chess {
 namespace V2 {
@@ -127,6 +128,153 @@ int countNonKingMaterial(const Board& board, Color color) {
     return total;
 }
 
+int countNonKingPieces(const Board& board, Color color) {
+    int total = 0;
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            Piece p = board.getPiece(r, c);
+            if (!p.isEmpty() && p.color == color && p.type != PieceType::KING) {
+                ++total;
+            }
+        }
+    }
+    return total;
+}
+
+bool isPassedPawnSimple(const Board& board, Color color, int row, int col) {
+    const Color enemy = enemyOf(color);
+
+    if (color == Color::WHITE) {
+        for (int r = row + 1; r < 8; ++r) {
+            for (int c = std::max(0, col - 1); c <= std::min(7, col + 1); ++c) {
+                Piece p = board.getPiece(r, c);
+                if (!p.isEmpty() && p.color == enemy && p.type == PieceType::PAWN) {
+                    return false;
+                }
+            }
+        }
+    } else {
+        for (int r = row - 1; r >= 0; --r) {
+            for (int c = std::max(0, col - 1); c <= std::min(7, col + 1); ++c) {
+                Piece p = board.getPiece(r, c);
+                if (!p.isEmpty() && p.color == enemy && p.type == PieceType::PAWN) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+int pawnAdvanceScore(Color color, int row) {
+    return color == Color::WHITE ? row : (7 - row);
+}
+
+int manhattanDistance(const Position& a, const Position& b) {
+    return std::abs(static_cast<int>(a.row) - static_cast<int>(b.row)) +
+           std::abs(static_cast<int>(a.col) - static_cast<int>(b.col));
+}
+
+int chebyshevDistance(const Position& a, const Position& b) {
+    return std::max(
+        std::abs(static_cast<int>(a.row) - static_cast<int>(b.row)),
+        std::abs(static_cast<int>(a.col) - static_cast<int>(b.col))
+    );
+}
+
+int kingEdgePressure(const Position& king) {
+    const int row = static_cast<int>(king.row);
+    const int col = static_cast<int>(king.col);
+
+    const int distTop = row;
+    const int distBottom = 7 - row;
+    const int distLeft = col;
+    const int distRight = 7 - col;
+
+    const int minEdgeDist = std::min(std::min(distTop, distBottom), std::min(distLeft, distRight));
+    return 3 - std::min(3, minEdgeDist);
+}
+
+int kingCornerPressure(const Position& king) {
+    const int row = static_cast<int>(king.row);
+    const int col = static_cast<int>(king.col);
+
+    const int d1 = row + col;
+    const int d2 = row + (7 - col);
+    const int d3 = (7 - row) + col;
+    const int d4 = (7 - row) + (7 - col);
+
+    const int minCornerDist = std::min(std::min(d1, d2), std::min(d3, d4));
+    return 7 - std::min(7, minCornerDist);
+}
+
+int evaluateSparseEndgame(const Board& board, Color aiColor) {
+    const Color oppColor = enemyOf(aiColor);
+
+    if (board.isCheckmate()) {
+        return board.getCurrentPlayer() == oppColor ? 30000 : -30000;
+    }
+
+    const Position aiKing = EvaluatorV2::findKing(board, aiColor);
+    const Position oppKing = EvaluatorV2::findKing(board, oppColor);
+
+    if (!aiKing.isValid() || !oppKing.isValid()) {
+        return 0;
+    }
+
+    const int aiMaterial = EvaluatorV2::countMaterial(board, aiColor);
+    const int oppMaterial = EvaluatorV2::countMaterial(board, oppColor);
+    const int materialDiff = aiMaterial - oppMaterial;
+
+    int score = materialDiff * 10;
+
+    // Strong conversion incentives only when ahead
+    if (materialDiff > 0) {
+        const int kingDist = chebyshevDistance(aiKing, oppKing);
+        score += (7 - std::min(7, kingDist)) * 30;
+
+        score += kingEdgePressure(oppKing) * 40;
+        score += kingCornerPressure(oppKing) * 18;
+
+        // Extra reward when your king is close AND their king is boxed in
+        score += kingEdgePressure(oppKing) * (7 - std::min(7, kingDist)) * 4;
+    }
+
+    // Passed/advanced pawns still matter a lot
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            Piece p = board.getPiece(r, c);
+            if (p.isEmpty() || p.type != PieceType::PAWN) {
+                continue;
+            }
+
+            const int advance = pawnAdvanceScore(p.color, r);
+            int pawnScore = advance * 12;
+
+            if (isPassedPawnSimple(board, p.color, r, c)) {
+                pawnScore += 30 + advance * 14;
+            }
+
+            if (p.color == aiColor) {
+                score += pawnScore;
+            } else {
+                score -= pawnScore;
+            }
+        }
+    }
+
+    // Keep check bonus small so it does not farm endless checks
+    if (materialDiff > 0 && board.isInCheck(oppColor)) {
+        score += 12;
+    }
+    if (board.isInCheck(aiColor)) {
+        score -= 40;
+    }
+
+    return score;
+}
+
 } // namespace
 
 int EvaluatorV2::evaluate(
@@ -144,6 +292,11 @@ int EvaluatorV2::evaluate(
 
     const Color oppColor = enemyOf(aiColor);
     const bool endgame = isEndgame(board);
+
+    const int oppNonKingPieces = countNonKingPieces(board, oppColor);
+    if (oppNonKingPieces < 4) {
+        return evaluateSparseEndgame(board, aiColor);
+    }
 
     const int aiMaterial = countMaterial(board, aiColor);
     const int oppMaterial = countMaterial(board, oppColor);
@@ -231,18 +384,46 @@ int EvaluatorV2::evaluateEndgame(
 
     const int aiMaterial = countMaterial(board, aiColor);
     const int oppMaterial = countMaterial(board, oppColor);
-    if (aiMaterial <= oppMaterial) {
-        return 0;
-    }
-
-    const int oppRow = static_cast<int>(oppKing.row);
-    const int oppCol = static_cast<int>(oppKing.col);
-    const int edgeDist = std::min(std::min(oppRow, 7 - oppRow), std::min(oppCol, 7 - oppCol));
-    const int kingDist = std::abs(static_cast<int>(aiKing.row) - oppRow) + std::abs(static_cast<int>(aiKing.col) - oppCol);
+    const int materialDiff = aiMaterial - oppMaterial;
 
     int score = 0;
-    score += (3 - std::min(3, edgeDist)) * 8;
-    score += (14 - kingDist) * 2;
+
+    if (materialDiff > 0) {
+        const int kingDist = chebyshevDistance(aiKing, oppKing);
+        score += (7 - std::min(7, kingDist)) * 14;
+        score += kingEdgePressure(oppKing) * 18;
+        score += kingCornerPressure(oppKing) * 8;
+    }
+
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            Piece p = board.getPiece(r, c);
+            if (p.isEmpty() || p.type != PieceType::PAWN) {
+                continue;
+            }
+
+            const int advance = pawnAdvanceScore(p.color, r);
+            int pawnScore = advance * 8;
+
+            if (isPassedPawnSimple(board, p.color, r, c)) {
+                pawnScore += 20 + advance * 10;
+            }
+
+            if (p.color == aiColor) {
+                score += pawnScore;
+            } else {
+                score -= pawnScore;
+            }
+        }
+    }
+
+    if (materialDiff > 0 && board.isInCheck(oppColor)) {
+        score += 8;
+    }
+    if (board.isInCheck(aiColor)) {
+        score -= 30;
+    }
+
     return score;
 }
 
