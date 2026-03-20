@@ -62,7 +62,7 @@ public:
     // Running searches will observe this and terminate quickly.
     static void cancelActiveSearches();
 
-// private:
+private:
     // Time control
     static long long startTimeMs;
     static int maxSearchTimeMs;
@@ -87,6 +87,16 @@ public:
 
     // Hash function for board positions
     static uint64_t hashBoard(const Board& board);
+
+    static int quiescence(
+        Board& board,
+        int alpha,
+        int beta,
+        int& nodesSearched,
+        int ply,
+        bool& timeUp,
+        int qDepth
+    );
 
     static int minimax(
         Board& board,
