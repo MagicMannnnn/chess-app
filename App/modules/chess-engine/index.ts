@@ -1,44 +1,19 @@
-// Import the native module. On web, it will be resolved to ChessEngine.web.ts
-// and on native platforms to ChessEngineModule native module
-import ChessEngineModule from './src/ChessEngineModule'
+import ChessEngineModule, {
+  addSearchProgressListener,
+  type SearchProgressData,
+  type SearchResultData,
+} from './src/ChessEngineModule'
 
 export interface PieceInfo {
   type: string
   color: string
 }
 
-export interface SearchProgressData {
-  depth: number
-  bestMove: string
-  score: number
-  nodesSearched: number
-  timeMs: number
-}
-
-export interface SearchResultData {
-  bestMove: string
-  score: number
-  depthCompleted: number
-  nodesSearched: number
-  timedOut: boolean
-  totalTimeMs: number
-  progressHistory: SearchProgressData[]
-}
-
 export class ChessEngine {
-  constructor() {
-    console.log('ChessEngine module wrapper: constructor called')
-  }
+  constructor() {}
 
   newGame(): void {
-    console.log('ChessEngine module wrapper: newGame called')
-    try {
-      ChessEngineModule.newGame()
-      console.log('ChessEngine module wrapper: newGame completed')
-    } catch (error) {
-      console.error('ChessEngine module wrapper: newGame failed:', error)
-      throw error
-    }
+    ChessEngineModule.newGame()
   }
 
   makeMove(move: string): boolean {
@@ -82,21 +57,13 @@ export class ChessEngine {
   }
 
   getBoard(): (PieceInfo | null)[] {
-    console.log('ChessEngine module wrapper: getBoard called')
-    try {
-      const result = ChessEngineModule.getBoard()
-      console.log('ChessEngine module wrapper: getBoard returned, length:', result?.length)
-      // Convert empty objects to null
-      return result.map((piece) => {
-        if (!piece || Object.keys(piece).length === 0) {
-          return null
-        }
-        return piece
-      })
-    } catch (error) {
-      console.error('ChessEngine module wrapper: getBoard failed:', error)
-      throw error
-    }
+    const result = ChessEngineModule.getBoard()
+    return result.map((piece) => {
+      if (!piece || Object.keys(piece).length === 0) {
+        return null
+      }
+      return piece
+    })
   }
 
   getFEN(): string {
@@ -124,11 +91,16 @@ export class ChessEngine {
   }
 
   async searchBestMove(
+    searchId: number,
     maxDepth: number,
     maxTimeMs: number = 0,
     aiVersion: 'v1' | 'v2' = 'v1',
   ): Promise<SearchResultData> {
-    return await ChessEngineModule.searchBestMove(maxDepth, maxTimeMs, aiVersion)
+    return await ChessEngineModule.searchBestMove(searchId, maxDepth, maxTimeMs, aiVersion)
+  }
+
+  addSearchProgressListener(listener: (progress: SearchProgressData) => void): { remove(): void } {
+    return addSearchProgressListener(listener)
   }
 
   getMoveHistory(): string[] {
@@ -144,13 +116,9 @@ export class ChessEngine {
   }
 
   clearSearchCaches(): void {
-    const moduleWithOptionalFn = ChessEngineModule as unknown as {
-      clearSearchCaches?: () => void
-    }
-    if (typeof moduleWithOptionalFn.clearSearchCaches === 'function') {
-      moduleWithOptionalFn.clearSearchCaches()
-    }
+    ChessEngineModule.clearSearchCaches()
   }
 }
 
 export default ChessEngine
+export type { SearchProgressData, SearchResultData }

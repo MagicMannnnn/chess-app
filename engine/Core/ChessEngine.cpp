@@ -8,11 +8,11 @@
 #include "v2/Evaluation.h"
 #endif
 
-#include <sstream>
-#include <iomanip>
-#include <iostream>
 #include <chrono>
 #include <cctype>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
 
 namespace Chess {
 
@@ -27,11 +27,9 @@ void ChessEngine::newGame() {
 
 bool ChessEngine::loadFromFEN(const std::string& fen) {
     const bool loaded = board_.fromFEN(fen);
-
     if (loaded) {
         moveHistory_.clear();
     }
-
     return loaded;
 }
 
@@ -41,29 +39,24 @@ std::string ChessEngine::getFEN() const {
 
 bool ChessEngine::makeMove(const std::string& algebraic) {
     std::vector<Move> legalMoves = board_.generateLegalMoves();
-
     for (const Move& legalMove : legalMoves) {
         if (legalMove.toAlgebraic() == algebraic) {
             return makeMove(legalMove);
         }
     }
-
     return false;
 }
 
 bool ChessEngine::makeMove(const Move& move) {
     const bool result = board_.makeMove(move);
-
     if (result) {
         moveHistory_.push_back(move.toAlgebraic());
     }
-
     return result;
 }
 
 void ChessEngine::undoMove() {
     board_.unmakeMove();
-
     if (!moveHistory_.empty()) {
         moveHistory_.pop_back();
     }
@@ -189,17 +182,15 @@ bool ChessEngine::canCastle(const std::string& side) const {
     if (side == "kingside" || side == "k") {
         if (player == Color::WHITE) {
             return (rights & CastlingRights::WHITE_KINGSIDE) != 0;
-        } else {
-            return (rights & CastlingRights::BLACK_KINGSIDE) != 0;
         }
+        return (rights & CastlingRights::BLACK_KINGSIDE) != 0;
     }
 
     if (side == "queenside" || side == "q") {
         if (player == Color::WHITE) {
             return (rights & CastlingRights::WHITE_QUEENSIDE) != 0;
-        } else {
-            return (rights & CastlingRights::BLACK_QUEENSIDE) != 0;
         }
+        return (rights & CastlingRights::BLACK_QUEENSIDE) != 0;
     }
 
     return false;
@@ -271,18 +262,147 @@ bool ChessEngine::canUndo() const {
     return !moveHistory_.empty();
 }
 
+std::string ChessEngine::getBestMove(int depth, int maxTimeMs, const std::string& aiVersion) const {
+    (void)aiVersion;
+
+    Board boardCopy = board_;
+    V2::SearchResult result = V2::Search::findBestMove(boardCopy, depth, nullptr, maxTimeMs);
+    if (!result.bestMove.isValid()) {
+        return "";
+    }
+    return result.bestMove.toAlgebraic();
+}
+
+std::string ChessEngine::getBestMoveAtDepth(int depth, int maxTimeMs, const std::string& aiVersion) const {
+    (void)aiVersion;
+
+    Board boardCopy = board_;
+    V2::SearchResult result = V2::Search::findBestMoveAtDepth(boardCopy, depth, maxTimeMs);
+    if (!result.bestMove.isValid()) {
+        return "";
+    }
+    return result.bestMove.toAlgebraic();
+}
+
+ChessEngine::SearchResultData ChessEngine::searchBestMove(
+    int maxDepth,
+    int maxTimeMs,
+    const std::string& aiVersion
+) const {
+    return searchBestMove(maxDepth, maxTimeMs, aiVersion, nullptr);
+}
+
+ChessEngine::SearchResultData ChessEngine::searchBestMove(
+    int maxDepth,
+    int maxTimeMs,
+    const std::string& aiVersion,
+    SearchProgressCallback progressCallback
+) const {
+    (void)aiVersion;
+
+    V2::Search::clearCaches();
+
+    Board boardCopy = board_;
+    SearchResultData finalResult;
+    finalResult.bestMove = "";
+    finalResult.score = 0;
+    finalResult.depthCompleted = 0;
+    finalResult.nodesSearched = 0;
+    finalResult.timedOut = false;
+    finalResult.cancelled = false;
+    finalResult.totalTimeMs = 0;
+    finalResult.progressHistory.clear();
+
+    const auto startTime = std::chrono::steady_clock::now();
+    int cumulativeNodes = 0;
+
+    V2::SearchResult result = V2::Search::findBestMove(
+        boardCopy,
+        maxDepth,
+        [&](const V2::SearchResult& progress) {
+            if (!progress.bestMove.isValid()) {
+                return;
+            }
+
+            cumulativeNodes += progress.nodesSearched;
+
+            SearchProgressData progressData;
+            progressData.depth = progress.depth;
+            progressData.bestMove = progress.bestMove.toAlgebraic();
+            progressData.score = progress.score;
+            progressData.nodesSearched = cumulativeNodes;
+            progressData.timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - startTime
+            ).count();
+
+            finalResult.bestMove = progressData.bestMove;
+            finalResult.score = progressData.score;
+            finalResult.depthCompleted = progressData.depth;
+            finalResult.nodesSearched = progressData.nodesSearched;
+            finalResult.progressHistory.push_back(progressData);
+
+            if (progressCallback) {
+                progressCallback(progressData);
+            }
+        },
+        maxTimeMs
+    );
+
+    finalResult.totalTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime
+    ).count();
+
+    if (result.bestMove.isValid() && finalResult.bestMove.empty()) {
+        finalResult.bestMove = result.bestMove.toAlgebraic();
+        finalResult.score = result.score;
+        finalResult.depthCompleted = result.depth;
+        finalResult.nodesSearched = result.nodesSearched;
+    }
+
+    if (maxTimeMs > 0 && finalResult.totalTimeMs >= maxTimeMs && finalResult.depthCompleted < maxDepth) {
+        finalResult.timedOut = true;
+    }
+
+    return finalResult;
+}
+
+void ChessEngine::clearSearchCaches() {
+    V2::Search::cancelActiveSearches();
+}
+
+int ChessEngine::evaluatePosition(const std::string& aiVersion) const {
+    (void)aiVersion;
+
+    V2::CastlingRights rights;
+    rights.whiteKingSide  = (board_.getCastlingRights() & CastlingRights::WHITE_KINGSIDE) != 0;
+    rights.whiteQueenSide = (board_.getCastlingRights() & CastlingRights::WHITE_QUEENSIDE) != 0;
+    rights.blackKingSide  = (board_.getCastlingRights() & CastlingRights::BLACK_KINGSIDE) != 0;
+    rights.blackQueenSide = (board_.getCastlingRights() & CastlingRights::BLACK_QUEENSIDE) != 0;
+
+    return V2::EvaluatorV2::evaluate(
+        board_,
+        board_.getCurrentPlayer(),
+        rights,
+        false,
+        false,
+        0
+    );
+}
+
 Square ChessEngine::parseSquare(const std::string& square) const {
     if (square.length() != 2) {
         return -1;
     }
 
-    int col = square[0] - 'a';
-    int row = square[1] - '1';
+    char file = static_cast<char>(std::tolower(static_cast<unsigned char>(square[0])));
+    char rank = square[1];
 
-    if (col < 0 || col >= 8 || row < 0 || row >= 8) {
+    if (file < 'a' || file > 'h' || rank < '1' || rank > '8') {
         return -1;
     }
 
+    int col = file - 'a';
+    int row = rank - '1';
     return row * 8 + col;
 }
 
@@ -305,8 +425,7 @@ std::string ChessEngine::pieceToString(const Piece& piece) const {
         return "none";
     }
 
-    std::string result;
-    result += (piece.color == Color::WHITE) ? "white_" : "black_";
+    std::string result = piece.color == Color::WHITE ? "white_" : "black_";
 
     switch (piece.type) {
         case PieceType::PAWN:   result += "pawn"; break;
@@ -315,152 +434,10 @@ std::string ChessEngine::pieceToString(const Piece& piece) const {
         case PieceType::ROOK:   result += "rook"; break;
         case PieceType::QUEEN:  result += "queen"; break;
         case PieceType::KING:   result += "king"; break;
-        default:                result += "unknown"; break;
+        default:                result = "none"; break;
     }
 
     return result;
-}
-
-// AI Search functions
-
-std::string ChessEngine::getBestMove(int depth, int maxTimeMs, const std::string& aiVersion) const {
-    (void)aiVersion; // API preserved, V2 only internally
-
-    // Fresh top-level search: clear stale TT / killer / history / PV caches
-    V2::Search::clearCaches();
-
-    Board boardCopy = board_;
-    V2::SearchResult result = V2::Search::findBestMove(boardCopy, depth, nullptr, maxTimeMs);
-
-    if (!result.bestMove.isValid()) {
-        return "";
-    }
-
-    return result.bestMove.toAlgebraic();
-}
-
-std::string ChessEngine::getBestMoveAtDepth(int depth, int maxTimeMs, const std::string& aiVersion) const {
-    (void)aiVersion; // API preserved, V2 only internally
-
-    // JS-managed iterative deepening starts at depth 1.
-    // Cancel/clear once at depth 1 so each new board state starts fresh,
-    // while depth 2..N can reuse caches from the same top-level search.
-    if (depth <= 1) {
-        V2::Search::cancelActiveSearches();
-        V2::Search::clearCaches();
-    }
-
-    Board boardCopy = board_;
-    V2::SearchResult result = V2::Search::findBestMoveAtDepth(boardCopy, depth, maxTimeMs);
-
-    if (!result.bestMove.isValid()) {
-        return "";
-    }
-
-    return result.bestMove.toAlgebraic();
-}
-
-ChessEngine::SearchResultData ChessEngine::searchBestMove(
-    int maxDepth,
-    int maxTimeMs,
-    const std::string& aiVersion
-) const {
-    (void)aiVersion; // API preserved, V2 only internally
-
-    // Fresh top-level search: avoid previous-position move leakage at shallow depths
-    V2::Search::clearCaches();
-
-    Board boardCopy = board_;
-
-    SearchResultData finalResult;
-    finalResult.bestMove = "";
-    finalResult.score = 0;
-    finalResult.depthCompleted = 0;
-    finalResult.nodesSearched = 0;
-    finalResult.timedOut = false;
-    finalResult.totalTimeMs = 0;
-    finalResult.progressHistory.clear();
-
-    const auto startTime = std::chrono::steady_clock::now();
-
-    for (int depth = 1; depth <= maxDepth; depth++) {
-        long long elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - startTime
-        ).count();
-
-        if (maxTimeMs > 0 && elapsed >= maxTimeMs) {
-            finalResult.timedOut = true;
-            break;
-        }
-
-        int remainingTime = 0;
-        if (maxTimeMs > 0) {
-            remainingTime = static_cast<int>(maxTimeMs - elapsed);
-            if (remainingTime < 0) {
-                remainingTime = 0;
-            }
-        }
-
-        V2::SearchResult result = V2::Search::findBestMoveAtDepth(boardCopy, depth, remainingTime);
-
-        if (result.bestMove.isValid()) {
-            finalResult.bestMove = result.bestMove.toAlgebraic();
-            finalResult.score = result.score;
-            finalResult.depthCompleted = depth;
-            finalResult.nodesSearched += result.nodesSearched;
-
-            SearchProgressData progress;
-            progress.depth = depth;
-            progress.bestMove = result.bestMove.toAlgebraic();
-            progress.score = result.score;
-            progress.nodesSearched = result.nodesSearched;
-            progress.timeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - startTime
-            ).count();
-
-            finalResult.progressHistory.push_back(progress);
-        }
-
-        elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - startTime
-        ).count();
-
-        if (maxTimeMs > 0 && elapsed >= maxTimeMs) {
-            finalResult.timedOut = true;
-            break;
-        }
-    }
-
-    finalResult.totalTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - startTime
-    ).count();
-
-    return finalResult;
-}
-
-void ChessEngine::clearSearchCaches() {
-    // Immediate cancellation request for any in-flight search.
-    // Cache clearing is performed at top-level search entry points.
-    V2::Search::cancelActiveSearches();
-}
-
-int ChessEngine::evaluatePosition(const std::string& aiVersion) const {
-    (void)aiVersion; // API preserved, V2 only internally
-
-    V2::CastlingRights rights;
-    rights.whiteKingSide  = (board_.getCastlingRights() & CastlingRights::WHITE_KINGSIDE) != 0;
-    rights.whiteQueenSide = (board_.getCastlingRights() & CastlingRights::WHITE_QUEENSIDE) != 0;
-    rights.blackKingSide  = (board_.getCastlingRights() & CastlingRights::BLACK_KINGSIDE) != 0;
-    rights.blackQueenSide = (board_.getCastlingRights() & CastlingRights::BLACK_QUEENSIDE) != 0;
-
-    return V2::EvaluatorV2::evaluate(
-        board_,
-        board_.getCurrentPlayer(),
-        rights,
-        false,
-        false,
-        board_.getFullmoveNumber()
-    );
 }
 
 } // namespace Chess

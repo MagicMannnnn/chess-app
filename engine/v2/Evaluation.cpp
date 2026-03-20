@@ -1,5 +1,4 @@
 #include "Evaluation.h"
-#include <cmath>
 #include <algorithm>
 
 namespace Chess {
@@ -19,79 +18,79 @@ namespace {
 
 constexpr int PAWN_PST[8][8] = {
     {  0,  0,  0,  0,  0,  0,  0,  0 },
-    {  2,  4,  8, 12, 12,  8,  4,  2 },
-    {  2,  8, 14, 20, 20, 14,  8,  2 },
-    {  1,  7, 12, 18, 18, 12,  7,  1 },
-    {  0,  5, 10, 16, 16, 10,  5,  0 },
-    {  0,  2,  4,  6,  6,  4,  2,  0 },
-    {  0,  0,  0, -6, -6,  0,  0,  0 },
+    {  2,  4,  6,  8,  8,  6,  4,  2 },
+    {  2,  5,  8, 10, 10,  8,  5,  2 },
+    {  1,  4,  6, 10, 10,  6,  4,  1 },
+    {  0,  2,  4,  8,  8,  4,  2,  0 },
+    {  0,  1,  2,  4,  4,  2,  1,  0 },
+    {  0,  0,  0, -2, -2,  0,  0,  0 },
     {  0,  0,  0,  0,  0,  0,  0,  0 }
 };
 
 constexpr int KNIGHT_PST[8][8] = {
-    { -40, -26, -16, -12, -12, -16, -26, -40 },
-    { -26, -10,   0,   4,   4,   0, -10, -26 },
-    { -16,   4,  12,  18,  18,  12,   4, -16 },
-    { -12,   8,  18,  24,  24,  18,   8, -12 },
-    { -12,   8,  18,  24,  24,  18,   8, -12 },
-    { -16,   4,  12,  18,  18,  12,   4, -16 },
-    { -26, -10,   0,   4,   4,   0, -10, -26 },
-    { -40, -26, -16, -12, -12, -16, -26, -40 }
+    { -16, -10,  -6,  -4,  -4,  -6, -10, -16 },
+    { -10,  -2,   2,   4,   4,   2,  -2, -10 },
+    {  -6,   4,   8,  10,  10,   8,   4,  -6 },
+    {  -4,   6,  10,  12,  12,  10,   6,  -4 },
+    {  -4,   6,  10,  12,  12,  10,   6,  -4 },
+    {  -6,   4,   8,  10,  10,   8,   4,  -6 },
+    { -10,  -2,   2,   4,   4,   2,  -2, -10 },
+    { -16, -10,  -6,  -4,  -4,  -6, -10, -16 }
 };
 
 constexpr int BISHOP_PST[8][8] = {
-    { -12,  -8,  -8,  -8,  -8,  -8,  -8, -12 },
-    {  -6,   2,   4,   6,   6,   4,   2,  -6 },
-    {  -4,   6,  10,  12,  12,  10,   6,  -4 },
-    {  -4,   8,  12,  16,  16,  12,   8,  -4 },
-    {  -4,   8,  12,  16,  16,  12,   8,  -4 },
-    {  -4,   6,  10,  12,  12,  10,   6,  -4 },
-    {  -6,   2,   4,   6,   6,   4,   2,  -6 },
-    { -12,  -8,  -8,  -8,  -8,  -8,  -8, -12 }
+    {  -8,  -4,  -4,  -4,  -4,  -4,  -4,  -8 },
+    {  -4,   2,   4,   5,   5,   4,   2,  -4 },
+    {  -4,   4,   6,   8,   8,   6,   4,  -4 },
+    {  -4,   5,   8,  10,  10,   8,   5,  -4 },
+    {  -4,   5,   8,  10,  10,   8,   5,  -4 },
+    {  -4,   4,   6,   8,   8,   6,   4,  -4 },
+    {  -4,   2,   4,   5,   5,   4,   2,  -4 },
+    {  -8,  -4,  -4,  -4,  -4,  -4,  -4,  -8 }
 };
 
 constexpr int ROOK_PST[8][8] = {
-    {   0,   2,   3,   4,   4,   3,   2,   0 },
-    {   2,   4,   6,   8,   8,   6,   4,   2 },
-    {   0,   1,   2,   4,   4,   2,   1,   0 },
-    {   0,   1,   2,   4,   4,   2,   1,   0 },
-    {   0,   1,   2,   4,   4,   2,   1,   0 },
-    {   0,   1,   2,   4,   4,   2,   1,   0 },
-    {   4,   6,   8,  12,  12,   8,   6,   4 },
-    {   0,   2,   3,   4,   4,   3,   2,   0 }
+    {  0,  1,  2,  3,  3,  2,  1,  0 },
+    {  1,  2,  3,  4,  4,  3,  2,  1 },
+    {  0,  1,  2,  3,  3,  2,  1,  0 },
+    {  0,  1,  2,  3,  3,  2,  1,  0 },
+    {  0,  1,  2,  3,  3,  2,  1,  0 },
+    {  0,  1,  2,  3,  3,  2,  1,  0 },
+    {  1,  2,  3,  4,  4,  3,  2,  1 },
+    {  0,  1,  2,  3,  3,  2,  1,  0 }
 };
 
 constexpr int QUEEN_PST[8][8] = {
-    {  -8,  -4,  -2,   0,   0,  -2,  -4,  -8 },
-    {  -4,   0,   2,   4,   4,   2,   0,  -4 },
-    {  -2,   2,   4,   6,   6,   4,   2,  -2 },
-    {   0,   4,   6,   8,   8,   6,   4,   0 },
-    {   0,   4,   6,   8,   8,   6,   4,   0 },
-    {  -2,   2,   4,   6,   6,   4,   2,  -2 },
-    {  -4,   0,   2,   4,   4,   2,   0,  -4 },
-    {  -8,  -4,  -2,   0,   0,  -2,  -4,  -8 }
+    {  -4,  -2,  -1,   0,   0,  -1,  -2,  -4 },
+    {  -2,   0,   1,   2,   2,   1,   0,  -2 },
+    {  -1,   1,   2,   3,   3,   2,   1,  -1 },
+    {   0,   2,   3,   4,   4,   3,   2,   0 },
+    {   0,   2,   3,   4,   4,   3,   2,   0 },
+    {  -1,   1,   2,   3,   3,   2,   1,  -1 },
+    {  -2,   0,   1,   2,   2,   1,   0,  -2 },
+    {  -4,  -2,  -1,   0,   0,  -1,  -2,  -4 }
 };
 
 constexpr int KING_MG_PST[8][8] = {
-    { -18, -10,   4,  -2,  -4,   6,  12,   8 },
-    { -14, -10,  -6, -12, -14,  -6,   2,   0 },
+    {   6,   8,   4,   0,   0,   4,   8,   6 },
+    {  -8,  -6,  -4,  -8,  -8,  -4,  -6,  -8 },
+    { -10, -10, -10, -12, -12, -10, -10, -10 },
     { -12, -12, -12, -16, -16, -12, -12, -12 },
-    { -14, -14, -16, -22, -22, -16, -14, -14 },
-    { -18, -18, -20, -26, -26, -20, -18, -18 },
-    { -22, -22, -24, -30, -30, -24, -22, -22 },
-    { -26, -26, -28, -34, -34, -28, -26, -26 },
-    { -30, -30, -32, -38, -38, -32, -30, -30 }
+    { -14, -14, -14, -18, -18, -14, -14, -14 },
+    { -16, -16, -16, -20, -20, -16, -16, -16 },
+    { -18, -18, -18, -22, -22, -18, -18, -18 },
+    { -20, -20, -20, -24, -24, -20, -20, -20 }
 };
 
 constexpr int KING_EG_PST[8][8] = {
-    { -20, -12,  -8,  -6,  -6,  -8, -12, -20 },
-    { -12,  -4,   0,   4,   4,   0,  -4, -12 },
-    {  -8,   0,   8,  12,  12,   8,   0,  -8 },
-    {  -6,   4,  12,  18,  18,  12,   4,  -6 },
-    {  -6,   4,  12,  18,  18,  12,   4,  -6 },
-    {  -8,   0,   8,  12,  12,   8,   0,  -8 },
-    { -12,  -4,   0,   4,   4,   0,  -4, -12 },
-    { -20, -12,  -8,  -6,  -6,  -8, -12, -20 }
+    {  -8,  -4,  -2,   0,   0,  -2,  -4,  -8 },
+    {  -4,   0,   2,   4,   4,   2,   0,  -4 },
+    {  -2,   2,   6,   8,   8,   6,   2,  -2 },
+    {   0,   4,   8,  10,  10,   8,   4,   0 },
+    {   0,   4,   8,  10,  10,   8,   4,   0 },
+    {  -2,   2,   6,   8,   8,   6,   2,  -2 },
+    {  -4,   0,   2,   4,   4,   2,   0,  -4 },
+    {  -8,  -4,  -2,   0,   0,  -2,  -4,  -8 }
 };
 
 inline Color enemyOf(Color color) {
@@ -102,58 +101,17 @@ inline int mirrorRow(Color color, int row) {
     return color == Color::WHITE ? row : (7 - row);
 }
 
-inline bool isCentralFile(int col) {
-    return col == 3 || col == 4;
-}
-
-inline bool isSemiCentralFile(int col) {
-    return col == 2 || col == 5;
-}
-
-inline bool isEdgeFile(int col) {
-    return col == 0 || col == 7;
-}
-
-inline bool isNearEdgeFile(int col) {
-    return col == 1 || col == 6;
-}
-
-inline bool isCoreCenterSquare(int row, int col) {
-    return (row == 3 || row == 4) && (col == 3 || col == 4);
-}
-
-inline bool isExtendedCenterSquare(int row, int col) {
-    return row >= 2 && row <= 5 && col >= 2 && col <= 5;
-}
-
-inline bool isKnightRimSquare(int col) {
-    return col == 0 || col == 7;
-}
-
-int countPiecesExcludingKings(const Board& board) {
-    int count = 0;
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (!p.isEmpty() && p.type != PieceType::KING) {
-                ++count;
-            }
-        }
+inline int pieceSquareValue(PieceType type, Color color, int row, int col, bool endgame) {
+    const int rr = mirrorRow(color, row);
+    switch (type) {
+        case PieceType::PAWN:   return PAWN_PST[rr][col];
+        case PieceType::KNIGHT: return KNIGHT_PST[rr][col];
+        case PieceType::BISHOP: return BISHOP_PST[rr][col];
+        case PieceType::ROOK:   return ROOK_PST[rr][col];
+        case PieceType::QUEEN:  return QUEEN_PST[rr][col];
+        case PieceType::KING:   return endgame ? KING_EG_PST[rr][col] : KING_MG_PST[rr][col];
+        default:                return 0;
     }
-    return count;
-}
-
-int countMajorPieces(const Board& board) {
-    int count = 0;
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (!p.isEmpty() && (p.type == PieceType::QUEEN || p.type == PieceType::ROOK)) {
-                ++count;
-            }
-        }
-    }
-    return count;
 }
 
 int countNonKingMaterial(const Board& board, Color color) {
@@ -169,550 +127,6 @@ int countNonKingMaterial(const Board& board, Color color) {
     return total;
 }
 
-int countPieceType(const Board& board, Color color, PieceType type) {
-    int count = 0;
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (!p.isEmpty() && p.color == color && p.type == type) {
-                ++count;
-            }
-        }
-    }
-    return count;
-}
-
-bool fileHasPawn(const Board& board, Color color, int file) {
-    for (int r = 0; r < 8; ++r) {
-        Piece p = board.getPiece(r, file);
-        if (!p.isEmpty() && p.color == color && p.type == PieceType::PAWN) {
-            return true;
-        }
-    }
-    return false;
-}
-
-int countPawnsOnFile(const Board& board, Color color, int file) {
-    int count = 0;
-    for (int r = 0; r < 8; ++r) {
-        Piece p = board.getPiece(r, file);
-        if (!p.isEmpty() && p.color == color && p.type == PieceType::PAWN) {
-            ++count;
-        }
-    }
-    return count;
-}
-
-bool likelyHasCastled(const Board& board, Color color) {
-    Position king = EvaluatorV2::findKing(board, color);
-    if (!king.isValid()) {
-        return false;
-    }
-
-    const int row = static_cast<int>(king.row);
-    const int col = static_cast<int>(king.col);
-
-    if (color == Color::WHITE) {
-        return row == 0 && (col == 6 || col == 2);
-    }
-    return row == 7 && (col == 6 || col == 2);
-}
-
-bool isPassedPawn(const Board& board, Color color, int row, int col) {
-    const Color enemy = enemyOf(color);
-
-    if (color == Color::WHITE) {
-        for (int r = row + 1; r < 8; ++r) {
-            for (int c = std::max(0, col - 1); c <= std::min(7, col + 1); ++c) {
-                Piece p = board.getPiece(r, c);
-                if (!p.isEmpty() && p.color == enemy && p.type == PieceType::PAWN) {
-                    return false;
-                }
-            }
-        }
-    } else {
-        for (int r = row - 1; r >= 0; --r) {
-            for (int c = std::max(0, col - 1); c <= std::min(7, col + 1); ++c) {
-                Piece p = board.getPiece(r, c);
-                if (!p.isEmpty() && p.color == enemy && p.type == PieceType::PAWN) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    return true;
-}
-
-bool isIsolatedPawn(const Board& board, Color color, int col) {
-    const bool left = (col > 0) ? fileHasPawn(board, color, col - 1) : false;
-    const bool right = (col < 7) ? fileHasPawn(board, color, col + 1) : false;
-    return !left && !right;
-}
-
-bool isConnectedPawn(const Board& board, Color color, int row, int col) {
-    for (int dc = -1; dc <= 1; dc += 2) {
-        const int adjFile = col + dc;
-        if (adjFile < 0 || adjFile > 7) {
-            continue;
-        }
-
-        for (int rr = std::max(0, row - 1); rr <= std::min(7, row + 1); ++rr) {
-            Piece p = board.getPiece(rr, adjFile);
-            if (!p.isEmpty() && p.color == color && p.type == PieceType::PAWN) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-int pawnAdvance(Color color, int row) {
-    return color == Color::WHITE ? (row - 1) : (6 - row);
-}
-
-int passedPawnBonus(Color color, int row, bool endgame) {
-    int advance = pawnAdvance(color, row);
-    if (advance < 0) {
-        advance = 0;
-    }
-
-    static const int MG[8] = {0, 0, 4, 8, 14, 24, 40, 0};
-    static const int EG[8] = {0, 0, 10, 18, 30, 50, 80, 0};
-
-    return endgame ? EG[std::min(7, advance)] : MG[std::min(7, advance)];
-}
-
-int pieceSquareValue(PieceType type, Color color, int row, int col, bool endgame) {
-    const int rr = mirrorRow(color, row);
-
-    switch (type) {
-        case PieceType::PAWN:   return PAWN_PST[rr][col];
-        case PieceType::KNIGHT: return KNIGHT_PST[rr][col];
-        case PieceType::BISHOP: return BISHOP_PST[rr][col];
-        case PieceType::ROOK:   return ROOK_PST[rr][col];
-        case PieceType::QUEEN:  return QUEEN_PST[rr][col];
-        case PieceType::KING:   return endgame ? KING_EG_PST[rr][col] : KING_MG_PST[rr][col];
-        default:                return 0;
-    }
-}
-
-bool attacksSquare(const Board& board, int fromRow, int fromCol, Piece piece, int targetRow, int targetCol) {
-    const int dr = targetRow - fromRow;
-    const int dc = targetCol - fromCol;
-
-    switch (piece.type) {
-        case PieceType::PAWN:
-            if (piece.color == Color::WHITE) {
-                return dr == 1 && (dc == -1 || dc == 1);
-            }
-            return dr == -1 && (dc == -1 || dc == 1);
-
-        case PieceType::KNIGHT: {
-            const int adr = std::abs(dr);
-            const int adc = std::abs(dc);
-            return (adr == 2 && adc == 1) || (adr == 1 && adc == 2);
-        }
-
-        case PieceType::BISHOP: {
-            if (std::abs(dr) != std::abs(dc) || dr == 0) {
-                return false;
-            }
-            const int stepR = (dr > 0) ? 1 : -1;
-            const int stepC = (dc > 0) ? 1 : -1;
-            int r = fromRow + stepR;
-            int c = fromCol + stepC;
-            while (r != targetRow && c != targetCol) {
-                if (!board.getPiece(r, c).isEmpty()) {
-                    return false;
-                }
-                r += stepR;
-                c += stepC;
-            }
-            return true;
-        }
-
-        case PieceType::ROOK: {
-            if (dr != 0 && dc != 0) {
-                return false;
-            }
-            if (dr == 0 && dc == 0) {
-                return false;
-            }
-            const int stepR = (dr == 0) ? 0 : ((dr > 0) ? 1 : -1);
-            const int stepC = (dc == 0) ? 0 : ((dc > 0) ? 1 : -1);
-            int r = fromRow + stepR;
-            int c = fromCol + stepC;
-            while (r != targetRow || c != targetCol) {
-                if (!board.getPiece(r, c).isEmpty()) {
-                    return false;
-                }
-                r += stepR;
-                c += stepC;
-            }
-            return true;
-        }
-
-        case PieceType::QUEEN: {
-            if (dr == 0 && dc == 0) {
-                return false;
-            }
-
-            if (dr == 0 || dc == 0) {
-                const int stepR = (dr == 0) ? 0 : ((dr > 0) ? 1 : -1);
-                const int stepC = (dc == 0) ? 0 : ((dc > 0) ? 1 : -1);
-                int r = fromRow + stepR;
-                int c = fromCol + stepC;
-                while (r != targetRow || c != targetCol) {
-                    if (!board.getPiece(r, c).isEmpty()) {
-                        return false;
-                    }
-                    r += stepR;
-                    c += stepC;
-                }
-                return true;
-            }
-
-            if (std::abs(dr) == std::abs(dc)) {
-                const int stepR = (dr > 0) ? 1 : -1;
-                const int stepC = (dc > 0) ? 1 : -1;
-                int r = fromRow + stepR;
-                int c = fromCol + stepC;
-                while (r != targetRow && c != targetCol) {
-                    if (!board.getPiece(r, c).isEmpty()) {
-                        return false;
-                    }
-                    r += stepR;
-                    c += stepC;
-                }
-                return true;
-            }
-
-            return false;
-        }
-
-        case PieceType::KING:
-            return std::max(std::abs(dr), std::abs(dc)) == 1;
-
-        default:
-            return false;
-    }
-}
-
-int countAttackersToSquare(const Board& board, Color color, int targetRow, int targetCol) {
-    int count = 0;
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color) {
-                continue;
-            }
-
-            if (attacksSquare(board, r, c, p, targetRow, targetCol)) {
-                ++count;
-            }
-        }
-    }
-
-    return count;
-}
-
-int evaluatePieceSquareTables(const Board& board, Color color, bool endgame) {
-    int score = 0;
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color) {
-                continue;
-            }
-
-            score += pieceSquareValue(p.type, color, r, c, endgame);
-
-            if ((p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) &&
-                isExtendedCenterSquare(r, c)) {
-                score += 3;
-            }
-
-            if ((p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) &&
-                isCoreCenterSquare(r, c)) {
-                score += 5;
-            }
-        }
-    }
-
-    return score;
-}
-
-int evaluateLoosePiecesInternal(const Board& board, Color color) {
-    int score = 0;
-    const Color enemy = enemyOf(color);
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            const Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color || p.type == PieceType::KING) {
-                continue;
-            }
-
-            const int defenders = countAttackersToSquare(board, color, r, c);
-            const int attackers = countAttackersToSquare(board, enemy, r, c);
-            const int value = EvaluatorV2::PIECE_VALUES[static_cast<int>(p.type)];
-
-            if (attackers == 0) {
-                continue;
-            }
-
-            if (defenders == 0) {
-                score -= value / 2;
-            } else if (attackers > defenders) {
-                score -= value / 3;
-            } else if (attackers == defenders) {
-                score -= value / 10;
-            } else {
-                score -= value / 30;
-            }
-        }
-    }
-
-    return score;
-}
-
-int evaluateThreatsInternal(const Board& board, Color color) {
-    int score = 0;
-    const Color enemy = enemyOf(color);
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            const Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != enemy || p.type == PieceType::KING) {
-                continue;
-            }
-
-            const int attackersByUs = countAttackersToSquare(board, color, r, c);
-            if (attackersByUs == 0) {
-                continue;
-            }
-
-            const int attackersByThem = countAttackersToSquare(board, enemy, r, c);
-            const int value = EvaluatorV2::PIECE_VALUES[static_cast<int>(p.type)];
-
-            if (attackersByThem == 0) {
-                score += value / 4;
-            } else if (attackersByUs > attackersByThem) {
-                score += value / 8;
-            } else if (attackersByUs == attackersByThem) {
-                score += value / 20;
-            }
-        }
-    }
-
-    return score;
-}
-
-int evaluateBishopPairInternal(const Board& board, Color color) {
-    return countPieceType(board, color, PieceType::BISHOP) >= 2 ? 28 : 0;
-}
-
-int evaluateRookActivityInternal(const Board& board, Color color) {
-    int score = 0;
-    const Color enemy = enemyOf(color);
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color || p.type != PieceType::ROOK) {
-                continue;
-            }
-
-            const bool ownPawnOnFile = fileHasPawn(board, color, c);
-            const bool enemyPawnOnFile = fileHasPawn(board, enemy, c);
-
-            if (!ownPawnOnFile && !enemyPawnOnFile) {
-                score += 10;
-            } else if (!ownPawnOnFile) {
-                score += 6;
-            }
-
-            if ((color == Color::WHITE && r == 6) || (color == Color::BLACK && r == 1)) {
-                score += 8;
-            }
-        }
-    }
-
-    return score;
-}
-
-int evaluatePawnStructureInternal(
-    const Board& board,
-    Color color,
-    bool endgame,
-    int moveCount,
-    bool hasCastled
-) {
-    int score = 0;
-
-    const bool centralDFile = fileHasPawn(board, color, 3);
-    const bool centralEFile = fileHasPawn(board, color, 4);
-    const int centralPawnCount = (centralDFile ? 1 : 0) + (centralEFile ? 1 : 0);
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color || p.type != PieceType::PAWN) {
-                continue;
-            }
-
-            if (isCentralFile(c)) {
-                score += 8;
-            } else if (isSemiCentralFile(c)) {
-                score += 3;
-            }
-
-            if (isCoreCenterSquare(r, c)) {
-                score += 14;
-            } else if (isExtendedCenterSquare(r, c) && isCentralFile(c)) {
-                score += 6;
-            }
-
-            if (isPassedPawn(board, color, r, c)) {
-                int bonus = passedPawnBonus(color, r, endgame);
-
-                if (!endgame) {
-                    if (isEdgeFile(c)) {
-                        bonus = (bonus * 45) / 100;
-                    } else if (isNearEdgeFile(c)) {
-                        bonus = (bonus * 70) / 100;
-                    }
-                }
-
-                score += bonus;
-
-                if (isConnectedPawn(board, color, r, c)) {
-                    score += endgame ? 12 : 6;
-                }
-            }
-
-            if (isIsolatedPawn(board, color, c)) {
-                score -= 10;
-            }
-
-            const int pawnsOnFile = countPawnsOnFile(board, color, c);
-            if (pawnsOnFile > 1) {
-                score -= (pawnsOnFile - 1) * 8;
-            }
-
-            if (isConnectedPawn(board, color, r, c)) {
-                score += 5;
-            }
-
-            if (!endgame && moveCount <= 18) {
-                const int advance = pawnAdvance(color, r);
-
-                if (!hasCastled) {
-                    if (isEdgeFile(c)) {
-                        if (advance >= 1) {
-                            score -= 18;
-                        }
-                        if (advance >= 2) {
-                            score -= 14;
-                        }
-                    } else if (isNearEdgeFile(c)) {
-                        if (advance >= 2) {
-                            score -= 8;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    score += centralPawnCount * 10;
-    return score;
-}
-
-int evaluateKingSafetyInternal(
-    const Board& board,
-    Color color,
-    bool endgame,
-    int moveCount,
-    const CastlingRights& castling,
-    bool hasCastled
-) {
-    if (endgame) {
-        return 0;
-    }
-
-    int score = 0;
-    Position king = EvaluatorV2::findKing(board, color);
-    if (!king.isValid()) {
-        return 0;
-    }
-
-    const int kr = static_cast<int>(king.row);
-    const int kc = static_cast<int>(king.col);
-
-    const int homeRow = (color == Color::WHITE) ? 0 : 7;
-    const bool stillHasCastlingRights =
-        (color == Color::WHITE)
-            ? (castling.whiteKingSide || castling.whiteQueenSide)
-            : (castling.blackKingSide || castling.blackQueenSide);
-
-    if (hasCastled) {
-        score += 70;
-    } else {
-        if (moveCount < 18 && stillHasCastlingRights) {
-            score += 20;
-        }
-
-        if (moveCount >= 6) {
-            if (kr != homeRow) {
-                score -= 40;
-            }
-
-            if (kc == 3 || kc == 4) {
-                score -= 35;
-            }
-
-            if (kr != homeRow && (kc == 3 || kc == 4)) {
-                score -= 20;
-            }
-        }
-    }
-
-    if ((color == Color::WHITE && kr == 0) || (color == Color::BLACK && kr == 7)) {
-        const int shieldRow = (color == Color::WHITE) ? 1 : 6;
-
-        int shieldBonus = 0;
-        for (int dc = -1; dc <= 1; ++dc) {
-            const int file = kc + dc;
-            if (file < 0 || file > 7) {
-                continue;
-            }
-
-            Piece p = board.getPiece(shieldRow, file);
-            if (!p.isEmpty() && p.color == color && p.type == PieceType::PAWN) {
-                shieldBonus += 10;
-            } else {
-                shieldBonus -= 8;
-            }
-        }
-
-        score += shieldBonus;
-    }
-
-    return score;
-}
-
-int manhattanDistance(const Position& a, const Position& b) {
-    const int ar = static_cast<int>(a.row);
-    const int ac = static_cast<int>(a.col);
-    const int br = static_cast<int>(b.row);
-    const int bc = static_cast<int>(b.col);
-    return std::abs(ar - br) + std::abs(ac - bc);
-}
-
 } // namespace
 
 int EvaluatorV2::evaluate(
@@ -723,105 +137,42 @@ int EvaluatorV2::evaluate(
     bool blackHasCastled,
     int moveCount
 ) {
+    (void)castling;
+    (void)whiteHasCastled;
+    (void)blackHasCastled;
+    (void)moveCount;
+
     const Color oppColor = enemyOf(aiColor);
     const bool endgame = isEndgame(board);
-
-    const bool inferredWhiteCastled = whiteHasCastled || likelyHasCastled(board, Color::WHITE);
-    const bool inferredBlackCastled = blackHasCastled || likelyHasCastled(board, Color::BLACK);
-
-    const bool aiHasCastled =
-        (aiColor == Color::WHITE) ? inferredWhiteCastled : inferredBlackCastled;
-    const bool oppHasCastled =
-        (aiColor == Color::WHITE) ? inferredBlackCastled : inferredWhiteCastled;
 
     const int aiMaterial = countMaterial(board, aiColor);
     const int oppMaterial = countMaterial(board, oppColor);
     const int materialDiff = aiMaterial - oppMaterial;
 
-    int score = materialDiff * 24;
-
+    int score = materialDiff * 8;
     if (materialDiff < 0) {
-        score += materialDiff * 12;
-    } else if (materialDiff > 0) {
         score += materialDiff * 4;
+    } else if (materialDiff > 0) {
+        score += materialDiff;
     }
 
-    score += evaluateLoosePiecesInternal(board, aiColor);
-    score -= evaluateLoosePiecesInternal(board, oppColor);
-
-    score += evaluateThreatsInternal(board, aiColor);
-    score -= evaluateThreatsInternal(board, oppColor);
-
-    score += evaluateKingSafetyInternal(board, aiColor, endgame, moveCount, castling, aiHasCastled);
-    score -= evaluateKingSafetyInternal(board, oppColor, endgame, moveCount, castling, oppHasCastled);
-
-    score += evaluatePawnStructureInternal(board, aiColor, endgame, moveCount, aiHasCastled);
-    score -= evaluatePawnStructureInternal(board, oppColor, endgame, moveCount, oppHasCastled);
-
-    score += evaluatePieceSquareTables(board, aiColor, endgame);
-    score -= evaluatePieceSquareTables(board, oppColor, endgame);
-
-    score += evaluateBishopPairInternal(board, aiColor);
-    score -= evaluateBishopPairInternal(board, oppColor);
-
-    score += evaluateRookActivityInternal(board, aiColor);
-    score -= evaluateRookActivityInternal(board, oppColor);
-
-    if (moveCount < 20 && materialDiff >= -120) {
-        const int aiDevelopment = evaluatePieceDevelopment(board, aiColor, moveCount);
-        const int oppDevelopment = evaluatePieceDevelopment(board, oppColor, moveCount);
-        score += (aiDevelopment - oppDevelopment) / 2;
-    }
-
-    if (!endgame) {
-        const int CASTLED_BONUS = 60;
-        const int CASTLING_RIGHTS_BONUS = 18;
-        const int UNCENTRALIZED_KING_PENALTY = 34;
-
-        if (aiHasCastled) {
-            score += CASTLED_BONUS;
-        }
-        if (oppHasCastled) {
-            score -= CASTLED_BONUS;
-        }
-
-        if (aiColor == Color::WHITE) {
-            if (!aiHasCastled && moveCount < 16 &&
-                (castling.whiteKingSide || castling.whiteQueenSide)) {
-                score += CASTLING_RIGHTS_BONUS;
+    int pstDiff = 0;
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            Piece p = board.getPiece(r, c);
+            if (p.isEmpty()) {
+                continue;
             }
-            if (!oppHasCastled && moveCount < 16 &&
-                (castling.blackKingSide || castling.blackQueenSide)) {
-                score -= CASTLING_RIGHTS_BONUS;
-            }
-        } else {
-            if (!aiHasCastled && moveCount < 16 &&
-                (castling.blackKingSide || castling.blackQueenSide)) {
-                score += CASTLING_RIGHTS_BONUS;
-            }
-            if (!oppHasCastled && moveCount < 16 &&
-                (castling.whiteKingSide || castling.whiteQueenSide)) {
-                score -= CASTLING_RIGHTS_BONUS;
-            }
-        }
-
-        Position aiKing = findKing(board, aiColor);
-        Position oppKing = findKing(board, oppColor);
-
-        if (aiKing.isValid() && !aiHasCastled && moveCount >= 8) {
-            const int kcol = static_cast<int>(aiKing.col);
-            if (kcol == 3 || kcol == 4) {
-                score -= UNCENTRALIZED_KING_PENALTY;
-            }
-        }
-
-        if (oppKing.isValid() && !oppHasCastled && moveCount >= 8) {
-            const int kcol = static_cast<int>(oppKing.col);
-            if (kcol == 3 || kcol == 4) {
-                score += UNCENTRALIZED_KING_PENALTY;
+            const int pst = pieceSquareValue(p.type, p.color, r, c, endgame);
+            if (p.color == aiColor) {
+                pstDiff += pst;
+            } else {
+                pstDiff -= pst;
             }
         }
     }
+
+    score += pstDiff;
 
     if (endgame) {
         score += evaluateEndgame(board, aiColor, castling);
@@ -832,7 +183,6 @@ int EvaluatorV2::evaluate(
 
 int EvaluatorV2::countMaterial(const Board& board, Color color) {
     int material = 0;
-
     for (int r = 0; r < 8; ++r) {
         for (int c = 0; c < 8; ++c) {
             Piece p = board.getPiece(r, c);
@@ -844,25 +194,13 @@ int EvaluatorV2::countMaterial(const Board& board, Color color) {
             }
         }
     }
-
     return material;
 }
 
 bool EvaluatorV2::isEndgame(const Board& board) {
-    const int totalPieces = countPiecesExcludingKings(board);
-    const int majorPieces = countMajorPieces(board);
     const int whiteMaterial = countNonKingMaterial(board, Color::WHITE);
     const int blackMaterial = countNonKingMaterial(board, Color::BLACK);
-
-    if (totalPieces <= 8) {
-        return true;
-    }
-
-    if (majorPieces == 0 && totalPieces <= 12) {
-        return true;
-    }
-
-    return (whiteMaterial <= 1300 && blackMaterial <= 1300);
+    return whiteMaterial <= 1400 && blackMaterial <= 1400;
 }
 
 Position EvaluatorV2::findKing(const Board& board, Color color) {
@@ -885,44 +223,26 @@ int EvaluatorV2::evaluateEndgame(
     (void)castling;
 
     const Color oppColor = enemyOf(aiColor);
-    const int aiMaterial = countMaterial(board, aiColor);
-    const int oppMaterial = countMaterial(board, oppColor);
-    int score = 0;
-
     const Position aiKing = findKing(board, aiColor);
     const Position oppKing = findKing(board, oppColor);
-
-    score += evaluatePawnStructureInternal(board, aiColor, true, 99, true);
-    score -= evaluatePawnStructureInternal(board, oppColor, true, 99, true);
-
-    if (aiMaterial > oppMaterial + 250 && aiKing.isValid() && oppKing.isValid()) {
-        const int kingRow = static_cast<int>(oppKing.row);
-        const int kingCol = static_cast<int>(oppKing.col);
-
-        const int edgeDist = std::min(
-            std::min(kingRow, 7 - kingRow),
-            std::min(kingCol, 7 - kingCol)
-        );
-
-        score += (3 - std::min(3, edgeDist)) * 16;
-
-        const int kingDist = manhattanDistance(aiKing, oppKing);
-        score += (14 - kingDist) * 4;
+    if (!aiKing.isValid() || !oppKing.isValid()) {
+        return 0;
     }
 
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != oppColor || p.type != PieceType::PAWN) {
-                continue;
-            }
-
-            if (isPassedPawn(board, oppColor, r, c)) {
-                score -= passedPawnBonus(oppColor, r, true) / 2;
-            }
-        }
+    const int aiMaterial = countMaterial(board, aiColor);
+    const int oppMaterial = countMaterial(board, oppColor);
+    if (aiMaterial <= oppMaterial) {
+        return 0;
     }
 
+    const int oppRow = static_cast<int>(oppKing.row);
+    const int oppCol = static_cast<int>(oppKing.col);
+    const int edgeDist = std::min(std::min(oppRow, 7 - oppRow), std::min(oppCol, 7 - oppCol));
+    const int kingDist = std::abs(static_cast<int>(aiKing.row) - oppRow) + std::abs(static_cast<int>(aiKing.col) - oppCol);
+
+    int score = 0;
+    score += (3 - std::min(3, edgeDist)) * 8;
+    score += (14 - kingDist) * 2;
     return score;
 }
 
@@ -951,143 +271,36 @@ bool EvaluatorV2::isPieceOnStartingSquare(PieceType type, Color color, Position 
 
 int EvaluatorV2::countUndevelopedPieces(const Board& board, Color color) {
     int undeveloped = 0;
-
     for (int r = 0; r < 8; ++r) {
         for (int c = 0; c < 8; ++c) {
             Piece p = board.getPiece(r, c);
             if (p.isEmpty() || p.color != color) {
                 continue;
             }
-
             const Position pos(r, c);
-
             if ((p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) &&
                 isPieceOnStartingSquare(p.type, color, pos)) {
                 ++undeveloped;
             }
         }
     }
-
     return undeveloped;
 }
 
 bool EvaluatorV2::isRookDeveloped(const Board& board, Color color) {
     const int startRow = (color == Color::WHITE) ? 0 : 7;
-
     const Piece leftRook = board.getPiece(startRow, 0);
     const Piece rightRook = board.getPiece(startRow, 7);
-
-    const bool leftMoved =
-        leftRook.isEmpty() || leftRook.type != PieceType::ROOK || leftRook.color != color;
-    const bool rightMoved =
-        rightRook.isEmpty() || rightRook.type != PieceType::ROOK || rightRook.color != color;
-
+    const bool leftMoved = leftRook.isEmpty() || leftRook.type != PieceType::ROOK || leftRook.color != color;
+    const bool rightMoved = rightRook.isEmpty() || rightRook.type != PieceType::ROOK || rightRook.color != color;
     return leftMoved || rightMoved;
 }
 
 int EvaluatorV2::evaluatePieceDevelopment(const Board& board, Color color, int moveCount) {
-    int development = 0;
-
-    const int undevelopedCount = countUndevelopedPieces(board, color);
-    const bool hasUndevelopedMinors = undevelopedCount > 0;
-    const bool rooksDeveloped = isRookDeveloped(board, color);
-    const bool hasCastled = likelyHasCastled(board, color);
-
-    if (moveCount > 4) {
-        development -= undevelopedCount * 14;
-    }
-
-    if (hasUndevelopedMinors && rooksDeveloped && moveCount < 16) {
-        development -= 36;
-    }
-
-    for (int r = 0; r < 8; ++r) {
-        for (int c = 0; c < 8; ++c) {
-            Piece p = board.getPiece(r, c);
-            if (p.isEmpty() || p.color != color) {
-                continue;
-            }
-
-            const Position pos(r, c);
-
-            if (p.type == PieceType::KNIGHT || p.type == PieceType::BISHOP) {
-                if (!isPieceOnStartingSquare(p.type, color, pos)) {
-                    development += 14;
-
-                    if (isExtendedCenterSquare(r, c)) {
-                        development += 8;
-                    }
-                    if (isCoreCenterSquare(r, c)) {
-                        development += 6;
-                    }
-
-                    if (p.type == PieceType::KNIGHT && isKnightRimSquare(c)) {
-                        development -= 18;
-                    }
-                } else if (moveCount > 8) {
-                    development -= 12;
-                }
-            }
-
-            if (p.type == PieceType::PAWN && moveCount < 14) {
-                if (color == Color::WHITE) {
-                    if ((c == 3 || c == 4) && r >= 2) {
-                        development += 12;
-                    }
-                    if ((c == 2 || c == 5) && r >= 2) {
-                        development += 4;
-                    }
-                } else {
-                    if ((c == 3 || c == 4) && r <= 5) {
-                        development += 12;
-                    }
-                    if ((c == 2 || c == 5) && r <= 5) {
-                        development += 4;
-                    }
-                }
-
-                if (!hasCastled && (c == 0 || c == 7)) {
-                    const int advance = pawnAdvance(color, r);
-                    if (advance >= 1) {
-                        development -= 14;
-                    }
-                    if (advance >= 2) {
-                        development -= 10;
-                    }
-                }
-            }
-
-            if (p.type == PieceType::QUEEN && moveCount < 10) {
-                if (!isPieceOnStartingSquare(p.type, color, pos)) {
-                    development -= 16;
-                }
-            }
-
-            if (p.type == PieceType::ROOK && moveCount < 14 && hasUndevelopedMinors) {
-                if (!isPieceOnStartingSquare(p.type, color, pos)) {
-                    development -= 36;
-                }
-            }
-
-            if (p.type == PieceType::ROOK && moveCount < 12 && !hasCastled) {
-                if (!isPieceOnStartingSquare(p.type, color, pos)) {
-                    development -= 22;
-                }
-            }
-
-            if (p.type == PieceType::KING && moveCount < 18 && !hasCastled) {
-                const int homeRow = (color == Color::WHITE) ? 0 : 7;
-                if (r != homeRow) {
-                    development -= 35;
-                }
-                if (c == 3 || c == 4) {
-                    development -= 18;
-                }
-            }
-        }
-    }
-
-    return development;
+    (void)board;
+    (void)color;
+    (void)moveCount;
+    return 0;
 }
 
 int EvaluatorV2::evaluatePieceCoordination(const Board& board, Color color) {

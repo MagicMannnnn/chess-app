@@ -2,6 +2,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+typedef void (^ChessSearchProgressBlock)(NSDictionary *progress);
+
 @interface ChessEngineWrapper : NSObject
 
 - (instancetype)init;
@@ -22,6 +24,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)getBestMove:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
 - (NSString *)getBestMoveAtDepth:(int)depth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
 - (NSDictionary *)searchBestMove:(int)maxDepth maxTimeMs:(int)maxTimeMs aiVersion:(NSString *)aiVersion;
+- (NSDictionary *)searchBestMove:(int)searchId
+                    maxDepth:(int)maxDepth
+                   maxTimeMs:(int)maxTimeMs
+                   aiVersion:(NSString *)aiVersion
+                    progress:(nullable ChessSearchProgressBlock)progress;
 - (NSArray<NSString *> *)getMoveHistory;
 - (BOOL)canUndo;
 - (int)evaluatePosition;
